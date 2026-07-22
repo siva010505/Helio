@@ -144,6 +144,18 @@ def run_pipeline(
                 video.upload_time = datetime.utcnow()
                 db_session.commit()
                 logger.info("[Pipeline] Phase 8 (Upload) complete. Video ID: %s", youtube_video_id)
+                
+                # ── Cleanup Cache ──────────────────────────────────────────
+                import glob
+                import os
+                for f in glob.glob("data/cache/*"):
+                    if not f.endswith(".gitkeep"):
+                        try:
+                            os.remove(f)
+                        except Exception as e:
+                            logger.warning("Failed to delete cache file %s: %s", f, e)
+                logger.info("[Pipeline] Cleaned up data/cache/ to save space after successful upload.")
+
             except Exception as e:
                 logger.error("[Pipeline] Upload failed: %s", e)
                 video.status = "failed"
