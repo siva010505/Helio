@@ -33,6 +33,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg espeak-ng
 
+      - name: Install Piper TTS
+        run: |
+          wget https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_linux_x86_64.tar.gz
+          tar -xf piper_linux_x86_64.tar.gz
+          echo "$(pwd)/piper" >> $GITHUB_PATH
+
       - name: Cache HuggingFace Models
         uses: actions/cache@v4
         with:
