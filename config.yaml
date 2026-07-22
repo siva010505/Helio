@@ -2,7 +2,7 @@ channels:
   - name: "ai_news_shorts"
     niche: "AI News"
     videos_per_day: 2
-    upload_times: ["12:30", "14:00"]
+    upload_times: ["10:30", "20:00"]
     target_length_seconds: 75
     tone: "energetic, fast-paced, hook in first 2 seconds"
     voice: "piper:en_US-ryan-high"
