@@ -84,7 +84,7 @@ class UploadAgent:
                 'categoryId': '22'  # People & Blogs
             },
             'status': {
-                'privacyStatus': 'private',  # Always upload as private initially for safety
+                'privacyStatus': 'public',  # Upload publicly to reach audience
                 'selfDeclaredMadeForKids': False, 
             }
         }
