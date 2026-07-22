@@ -32,6 +32,8 @@ class AssemblyAgent:
             
         self.accent_color = brand_config.get("accent_color", "yellow")
         self.bgm_path = brand_config.get("intro_sting_path", "")
+        self.logo_path = brand_config.get("logo_path", "assets/logo/channel_logo.png")
+        self.watermark_opacity = float(brand_config.get("watermark_opacity", 0.65))
 
     def _resize_and_crop(self, clip, target_resolution):
         """
@@ -163,7 +165,33 @@ class AssemblyAgent:
 
         if caption_clips:
             logger.info("[AssemblyAgent] Compositing %d caption clips.", len(caption_clips))
-            main_video = CompositeVideoClip([main_video] + caption_clips)
+            
+        final_clips = [main_video] + caption_clips
+        
+        # Add watermark if present
+        if self.logo_path and os.path.exists(self.logo_path):
+            try:
+                from moviepy import ImageClip
+                watermark = ImageClip(self.logo_path)
+                
+                # Robust opacity
+                if hasattr(watermark, "with_opacity"):
+                    watermark = watermark.with_opacity(self.watermark_opacity)
+                elif hasattr(watermark, "set_opacity"):
+                    watermark = watermark.set_opacity(self.watermark_opacity)
+                    
+                # Robust position and duration
+                if hasattr(watermark, "with_position"):
+                    watermark = watermark.with_position((40, 40)).with_duration(main_video.duration)
+                else:
+                    watermark = watermark.set_position((40, 40)).set_duration(main_video.duration)
+                
+                final_clips.append(watermark)
+                logger.info("[AssemblyAgent] Added watermark from %s", self.logo_path)
+            except Exception as e:
+                logger.warning("Failed to add watermark: %s", e)
+
+        main_video = CompositeVideoClip(final_clips)
             
         # 6. Export
         output_path = self.cache_dir / f"final_video_{video_id}.mp4"
