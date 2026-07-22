@@ -110,8 +110,13 @@ class VoiceAgent:
 
         # Run Piper CLI
         # Usage: piper -m MODEL -c CONFIG -i INPUT_FILE -f OUTPUT_FILE
+        piper_exe = "piper"
+        local_piper = os.path.join(os.getcwd(), "piper", "piper")
+        if os.path.exists(local_piper):
+            piper_exe = local_piper
+
         cmd = [
-            "piper",
+            piper_exe,
             "-m", str(model_path),
             "-c", str(config_path),
             "-i", str(input_txt),
