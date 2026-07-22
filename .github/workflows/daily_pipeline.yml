@@ -31,7 +31,9 @@ jobs:
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg espeak-ng
+          sudo apt-get install -y ffmpeg espeak-ng imagemagick
+          # Fix ImageMagick policy on Ubuntu to allow MoviePy to render text
+          sudo sed -i '/<policy domain="path" rights="none" pattern="@\*"/d' /etc/ImageMagick-6/policy.xml
 
       - name: Install Piper TTS
         run: |
