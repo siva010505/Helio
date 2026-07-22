@@ -1,0 +1,16 @@
+.env
+client_secret.json
+token.pickle
+credentials/
+data/cache/
+data/models/
+logs/
+__pycache__/
+*.pyc
+.pytest_cache/
+assets/music/*
+assets/fonts/*
+assets/logo/*
+!assets/music/.gitkeep
+!assets/fonts/.gitkeep
+!assets/logo/.gitkeep

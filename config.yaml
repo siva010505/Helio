@@ -1,0 +1,43 @@
+channels:
+  - name: "ai_news_shorts"
+    niche: "AI News"
+    videos_per_day: 2
+    upload_times: ["09:00", "19:00"]
+    target_length_seconds: 55
+    tone: "energetic, fast-paced, hook in first 2 seconds"
+    voice: "piper:en_US-ryan-high"
+    hashtags_base: ["#AI", "#TechNews", "#Shorts"]
+    commentary_style: "brief original opinion/reaction, not just a summary"
+    brand:
+      intro_sting_path: "assets/music/intro_sting.mp3"
+      font: "assets/fonts/Poppins-Bold.ttf"
+      accent_color: "#FFD400"
+      logo_path: "assets/logo/channel_logo.png"
+
+llm:
+  provider: "nim"
+  model: "meta/llama-3.1-70b-instruct"
+  vision_model: "meta/llama-3.2-11b-vision-instruct"
+  temperature: 0.8
+
+video:
+  resolution: "1080x1920"
+  max_duration_seconds: 60
+  min_duration_seconds: 50
+  caption_style: "bold_bottom_center"
+  caption_animation: "word_by_word_reveal"
+
+visual_sources:
+  apis: ["pexels", "pixabay", "unsplash"]
+  vision_scoring:
+    enabled: true
+    max_candidates_scored_per_scene: 3
+    fallback_if_no_good_match: "kinetic_text_card"
+
+quota:
+  youtube_daily_unit_budget: 8000
+  upload_cost_units: 1600
+
+learning:
+  min_videos_before_adjusting: 5
+  metrics_pulled: ["views", "likes", "comments", "average_view_duration", "average_view_percentage"]

@@ -1,0 +1,237 @@
+"""
+Analytics Agent
+
+Role:
+Queries the YouTube Analytics API to pull real performance metrics
+for uploaded videos that have reached maturity (>= 72 hours old).
+Stores results in the performance_metrics table.
+
+The 72-hour maturity rule is strictly enforced — any video uploaded
+less than 72 hours ago is completely skipped.
+"""
+
+import os
+import logging
+import pickle
+from datetime import datetime, timezone, timedelta
+from typing import List, Dict, Any
+
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+
+from src.db.models import Video, PerformanceMetric
+
+logger = logging.getLogger(__name__)
+
+SCOPES = [
+    "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/yt-analytics.readonly",
+]
+
+# The maturity window — no video younger than this will be analysed
+MATURITY_HOURS = 72
+
+
+class AnalyticsAgent:
+    def __init__(self, config: Dict[str, Any], db_session):
+        self.config = config
+        self.db = db_session
+        self.credentials_file = self.config.get("youtube", {}).get(
+            "client_secret_file", "client_secret.json"
+        )
+        self.token_file = "token.pickle"
+
+    # ------------------------------------------------------------------
+    # Auth (reuses the same token.pickle as UploadAgent)
+    # ------------------------------------------------------------------
+
+    def _authenticate(self):
+        creds = None
+        if os.path.exists(self.token_file):
+            with open(self.token_file, "rb") as f:
+                creds = pickle.load(f)
+
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                try:
+                    creds.refresh(Request())
+                except Exception as e:
+                    logger.warning("Token refresh failed, forcing re-auth: %s", e)
+                    creds = None
+
+            if not creds:
+                if not os.path.exists(self.credentials_file):
+                    raise FileNotFoundError(
+                        f"OAuth file '{self.credentials_file}' not found."
+                    )
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    self.credentials_file, SCOPES
+                )
+                creds = flow.run_local_server(port=0)
+
+            with open(self.token_file, "wb") as f:
+                pickle.dump(creds, f)
+
+        return creds
+
+    # ------------------------------------------------------------------
+    # Eligibility filter (72-hour rule)
+    # ------------------------------------------------------------------
+
+    def _mature_videos(self) -> List[Video]:
+        """
+        Returns all uploaded videos that are at least MATURITY_HOURS old
+        and have not yet had metrics pulled in the past 24 hours.
+
+        Rules:
+        - Videos uploaded < 72h ago → always skipped (immature)
+        - Videos with a metric pull in the last 24h → skipped (already fresh)
+        - Everything else → eligible
+        """
+        cutoff = datetime.utcnow() - timedelta(hours=MATURITY_HOURS)
+        last_24h = datetime.utcnow() - timedelta(hours=24)
+
+        eligible = (
+            self.db.query(Video)
+            .filter(
+                Video.status == "uploaded",
+                Video.youtube_video_id.isnot(None),
+                Video.upload_time <= cutoff,   # 72-hour gate
+            )
+            .all()
+        )
+
+        result = []
+        for v in eligible:
+            # Check if we pulled a metric for this video within the past 24 h
+            recent_pull = (
+                self.db.query(PerformanceMetric)
+                .filter(
+                    PerformanceMetric.video_id == v.id,
+                    PerformanceMetric.pulled_at >= last_24h,
+                )
+                .first()
+            )
+            if recent_pull is None:
+                result.append(v)   # no recent pull → include
+
+        logger.info(
+            "[AnalyticsAgent] %d videos eligible for metrics pull (>= %d h old).",
+            len(result),
+            MATURITY_HOURS,
+        )
+        return result
+
+    # ------------------------------------------------------------------
+    # YouTube Analytics fetch
+    # ------------------------------------------------------------------
+
+    def _fetch_metrics(self, youtube_analytics, video_id: str) -> Dict[str, Any]:
+        """
+        Fetches views, estimatedMinutesWatched, averageViewDuration, and
+        annotationClickThroughRate for a given YouTube video ID.
+        """
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        # Start from a wide enough window so we capture all-time stats
+        start_date = "2020-01-01"
+
+        response = (
+            youtube_analytics.reports()
+            .query(
+                ids="channel==MINE",
+                startDate=start_date,
+                endDate=today,
+                metrics=(
+                    "views,"
+                    "likes,"
+                    "comments,"
+                    "estimatedMinutesWatched,"
+                    "averageViewDuration,"
+                    "averageViewPercentage,"
+                    "annotationClickThroughRate"
+                ),
+                dimensions="video",
+                filters=f"video=={video_id}",
+            )
+            .execute()
+        )
+
+        rows = response.get("rows", [])
+        if not rows:
+            logger.warning("[AnalyticsAgent] No data returned for video %s.", video_id)
+            return {}
+
+        # rows[0]: [video_id, views, likes, comments, estMinsWatched, avgDuration, avgPct, ctr]
+        row = rows[0]
+        return {
+            "views": int(row[1]),
+            "likes": int(row[2]),
+            "comments": int(row[3]),
+            "average_view_duration": float(row[5]),
+            "average_view_percentage": float(row[6]),
+            "ctr": float(row[7]) if len(row) > 7 else None,
+        }
+
+    # ------------------------------------------------------------------
+    # Public entrypoint
+    # ------------------------------------------------------------------
+
+    def pull_metrics(self) -> List[Dict]:
+        """
+        Main entrypoint.
+        Authenticates, finds mature videos, pulls analytics, and persists
+        them to the performance_metrics table.
+
+        Returns a list of result dicts for logging / downstream use.
+        """
+        videos = self._mature_videos()
+        if not videos:
+            logger.info("[AnalyticsAgent] No mature videos to process. Exiting.")
+            return []
+
+        try:
+            creds = self._authenticate()
+        except FileNotFoundError as e:
+            logger.error("[AnalyticsAgent] %s — skipping analytics pull.", e)
+            return []
+
+        youtube_analytics = build("youtubeAnalytics", "v2", credentials=creds)
+
+        results = []
+        for video in videos:
+            logger.info(
+                "[AnalyticsAgent] Pulling metrics for video '%s' (yt_id=%s, age=%.1f h).",
+                video.title,
+                video.youtube_video_id,
+                (datetime.utcnow() - video.upload_time).total_seconds() / 3600,
+            )
+            try:
+                metrics = self._fetch_metrics(youtube_analytics, video.youtube_video_id)
+                if not metrics:
+                    continue
+
+                record = PerformanceMetric(
+                    video_id=video.id,
+                    pulled_at=datetime.utcnow(),
+                    views=metrics.get("views", 0),
+                    likes=metrics.get("likes", 0),
+                    comments=metrics.get("comments", 0),
+                    average_view_duration=metrics.get("average_view_duration"),
+                    average_view_percentage=metrics.get("average_view_percentage"),
+                    ctr=metrics.get("ctr"),
+                )
+                self.db.add(record)
+                self.db.commit()
+
+                results.append({"video_id": video.id, "yt_id": video.youtube_video_id, **metrics})
+                logger.info("[AnalyticsAgent] Saved metrics for video %s.", video.id)
+
+            except Exception as exc:
+                logger.error(
+                    "[AnalyticsAgent] Failed to pull metrics for yt_id=%s: %s",
+                    video.youtube_video_id,
+                    exc,
+                )
+
+        return results

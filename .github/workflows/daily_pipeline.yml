@@ -1,0 +1,77 @@
+name: Helio Daily Pipeline
+
+on:
+  schedule:
+    # Run at 08:00 UTC every day
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    # Allow manual triggering from the GitHub UI
+
+permissions:
+  contents: write  # Required to commit the agent.db back to the repo
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          # Required to push changes back to the repository
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip' # Automatically caches pip dependencies
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg espeak-ng
+
+      - name: Cache HuggingFace Models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: ${{ runner.os }}-hf-faster-whisper
+          restore-keys: |
+            ${{ runner.os }}-hf-
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Setup OAuth Credentials
+        run: |
+          # Decode the Base64 secrets into the actual files the UploadAgent expects
+          echo "${{ secrets.YOUTUBE_CLIENT_SECRET_B64 }}" | base64 --decode > client_secret.json
+          echo "${{ secrets.YOUTUBE_TOKEN_PICKLE_B64 }}" | base64 --decode > token.pickle
+
+      - name: Run Daily Pipeline
+        env:
+          NIM_API_KEY: ${{ secrets.NIM_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          # Ensure YouTube API uses the generated token file
+          OAUTHLIB_INSECURE_TRANSPORT: "1" 
+        run: |
+          python scripts/run_daily_pipeline.py
+
+      - name: Commit Database State
+        if: always() # Run this even if the pipeline fails, to track partial state
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add data/agent.db
+          # Only commit if there are changes to the DB
+          if ! git diff-index --quiet HEAD; then
+            git commit -m "chore(db): auto-update agent.db state [skip ci]"
+            git push
+          else
+            echo "No changes in database to commit."
+          fi
