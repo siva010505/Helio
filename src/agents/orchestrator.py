@@ -194,10 +194,12 @@ class OrchestratorAgent:
         )
 
         # ── Phase 3+: Video Pipeline (stub — implemented in later phases) ─
-        for topic in selected:
+        for idx, topic in enumerate(selected):
             try:
+                upload_times = ch_cfg.get("upload_times", [])
+                publish_time_str = upload_times[idx] if idx < len(upload_times) else None
                 video_result = self._run_video_pipeline(
-                    ch_cfg, channel, topic, dry_run=dry_run
+                    ch_cfg, channel, topic, dry_run=dry_run, publish_time_str=publish_time_str
                 )
                 ch_summary["videos_created"].append(video_result)
             except Exception as exc:
@@ -208,7 +210,7 @@ class OrchestratorAgent:
         return ch_summary
 
     def _run_video_pipeline(
-        self, ch_cfg: dict, channel: Channel, topic: dict, dry_run: bool
+        self, ch_cfg: dict, channel: Channel, topic: dict, dry_run: bool, publish_time_str: str = None
     ) -> dict:
         """
         Call the video creation pipeline for a single selected topic.
@@ -225,5 +227,6 @@ class OrchestratorAgent:
             db_session=self.db,
             llm_client=self.llm,
             dry_run=dry_run,
+            publish_time_str=publish_time_str,
         )
         return result or {"topic": topic["topic_text"], "status": "stub — not yet implemented"}

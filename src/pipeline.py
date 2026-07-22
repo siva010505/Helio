@@ -30,6 +30,7 @@ def run_pipeline(
     db_session,
     llm_client=None,
     dry_run: bool = False,
+    publish_time_str: str = None,
 ) -> dict:
     """
     Run the full video creation pipeline for a single topic.
@@ -137,7 +138,8 @@ def run_pipeline(
                     title=video.title,
                     description=video.description,
                     tags=json.loads(video.tags_json) if video.tags_json else [],
-                    thumbnail_path=video.thumbnail_path
+                    thumbnail_path=video.thumbnail_path,
+                    publish_time_str=publish_time_str
                 )
                 video.youtube_video_id = youtube_video_id
                 video.status = "uploaded"

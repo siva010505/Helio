@@ -10,6 +10,7 @@ import os
 import pickle
 import logging
 from typing import Dict, Any
+from datetime import datetime, timedelta
 
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -62,7 +63,15 @@ class UploadAgent:
                 
         return creds
 
-    def upload_video(self, video_path: str, title: str, description: str, tags: list, thumbnail_path: str = None) -> str:
+    def upload_video(
+        self,
+        video_path: str,
+        title: str,
+        description: str,
+        tags: list,
+        thumbnail_path: str = None,
+        publish_time_str: str = None,
+    ) -> str:
         """
         Uploads the video to YouTube.
         Returns the new YouTube Video ID.
@@ -76,17 +85,31 @@ class UploadAgent:
             
         youtube = build('youtube', 'v3', credentials=creds)
 
+        status_dict = {
+            'privacyStatus': 'private',  # Must be private for publishAt to work
+            'selfDeclaredMadeForKids': False, 
+        }
+
+        if publish_time_str:
+            try:
+                now = datetime.utcnow()
+                h, m = map(int, publish_time_str.split(':'))
+                target = now.replace(hour=h, minute=m, second=0, microsecond=0)
+                if target <= now:
+                    target += timedelta(days=1)
+                status_dict['publishAt'] = target.isoformat() + "Z"
+                logger.info("[UploadAgent] Scheduling video to publish at %s", status_dict['publishAt'])
+            except Exception as e:
+                logger.warning("[UploadAgent] Failed to parse publish_time_str '%s', uploading immediately as private: %s", publish_time_str, e)
+
         body = {
             'snippet': {
-                'title': title,
+                'title': title[:100],
                 'description': description,
                 'tags': tags,
                 'categoryId': '22'  # People & Blogs
             },
-            'status': {
-                'privacyStatus': 'public',  # Upload publicly to reach audience
-                'selfDeclaredMadeForKids': False, 
-            }
+            'status': status_dict
         }
 
         # Call the API's videos.insert method to create and upload the video.
