@@ -19,7 +19,7 @@ class ThumbnailAgent:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         
         brand_config = self.config.get("channels", [{}])[0].get("brand", {})
-        self.font = brand_config.get("font", "C:/Windows/Fonts/arialbd.ttf")
+        self.font = brand_config.get("font", os.path.join(os.getcwd(), "assets", "fonts", "Roboto-Bold.ttf"))
         self.accent_color = brand_config.get("accent_color", "yellow")
 
     def generate_thumbnail(self, video_path: str, title: str, video_id: int) -> str:
@@ -46,6 +46,8 @@ class ThumbnailAgent:
 
             # Use a fallback font if custom font isn't accessible by PIL directly
             try:
+                if not os.path.exists(self.font):
+                    logger.warning("Font %s not found. Thumbnail text may fail to render.", self.font)
                 font = ImageFont.truetype(self.font, 120)
             except IOError:
                 font = ImageFont.load_default()

@@ -24,11 +24,11 @@ class AssemblyAgent:
         self.resolution = tuple(map(int, self.config.get("video", {}).get("resolution", "1080x1920").split('x')))
         
         brand_config = self.config.get("channels", [{}])[0].get("brand", {})
-        self.font = brand_config.get("font", "C:/Windows/Fonts/arialbd.ttf")
+        self.font = brand_config.get("font", os.path.join(os.getcwd(), "assets", "fonts", "Roboto-Bold.ttf"))
         # Ensure fallback font if custom font not found
         if not os.path.exists(self.font):
-            logger.warning(f"Font {self.font} not found. Falling back to Arial Bold.")
-            self.font = "C:/Windows/Fonts/arialbd.ttf"
+            logger.warning("Font %s not found. Captions may fail to render.", self.font)
+            self.font = os.path.join(os.getcwd(), "assets", "fonts", "Roboto-Bold.ttf")
             
         self.accent_color = brand_config.get("accent_color", "yellow")
         self.bgm_path = brand_config.get("intro_sting_path", "")
