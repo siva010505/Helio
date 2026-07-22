@@ -35,13 +35,7 @@ jobs:
           # Fix ImageMagick policy on Ubuntu to allow MoviePy to render text
           sudo sed -i '/<policy domain="path" rights="none" pattern="@\*"/d' /etc/ImageMagick-6/policy.xml
 
-      - name: Install Piper TTS
-        run: |
-          wget https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz
-          tar -xf piper_linux_x86_64.tar.gz
-          chmod +x piper/piper
-          echo "$(pwd)/piper" >> $GITHUB_PATH
-          echo "LD_LIBRARY_PATH=$(pwd)/piper:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
 
       - name: Cache HuggingFace Models
         uses: actions/cache@v4

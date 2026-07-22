@@ -108,19 +108,13 @@ class VoiceAgent:
         with open(input_txt, "w", encoding="utf-8") as f:
             f.write(script_text)
 
-        # Run Piper CLI
-        # Usage: piper -m MODEL -c CONFIG -i INPUT_FILE -f OUTPUT_FILE
-        piper_exe = "piper"
-        local_piper = os.path.join(os.getcwd(), "piper", "piper")
-        if os.path.exists(local_piper):
-            piper_exe = local_piper
-
         cmd = [
-            piper_exe,
+            "piper",
             "-m", str(model_path),
             "-c", str(config_path),
             "-i", str(input_txt),
-            "-f", str(output_wav)
+            "-f", str(output_wav),
+            "--length_scale", "1.0",
         ]
         
         logger.info("[VoiceAgent] Executing Piper TTS...")
