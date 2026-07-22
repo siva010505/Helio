@@ -1,12 +1,12 @@
 channels:
-  - name: "ai_news_shorts"
-    niche: "AI News"
+  - name: "psychology_shorts"
+    niche: "Psychology & human behavior (narrative format)"
     videos_per_day: 2
     upload_times: ["08:30", "20:00"]
     target_length_seconds: 75
-    tone: "energetic, fast-paced, hook in first 2 seconds"
+    tone: "mysterious, narrative, intriguing, hook in first 2 seconds"
     voice: "piper:en_US-ryan-high"
-    hashtags_base: ["#AI", "#TechNews", "#Shorts"]
+    hashtags_base: ["#Psychology", "#HumanBehavior", "#Shorts"]
     commentary_style: "brief original opinion/reaction, not just a summary"
     brand:
       intro_sting_path: "assets/music/intro_sting.mp3"
