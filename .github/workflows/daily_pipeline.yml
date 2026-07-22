@@ -2,8 +2,8 @@ name: Helio Daily Pipeline
 
 on:
   schedule:
-    # Run at 20:30 UTC every day
-    - cron: '30 20 * * *'
+    # Run at 08:00 UTC every day
+    - cron: '0 8 * * *'
   workflow_dispatch:
     # Allow manual triggering from the GitHub UI
 
