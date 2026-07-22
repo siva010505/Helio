@@ -37,7 +37,7 @@ jobs:
 
       - name: Install Piper TTS
         run: |
-          wget https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_linux_x86_64.tar.gz
+          wget https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz
           tar -xf piper_linux_x86_64.tar.gz
           echo "$(pwd)/piper" >> $GITHUB_PATH
 
