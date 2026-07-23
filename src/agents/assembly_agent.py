@@ -299,7 +299,6 @@ class AssemblyAgent:
         # YouTube API ignores custom thumbnails for Shorts and often shows a blank grey screen if we try.
         # Workaround: Bake the thumbnail as the very first 0.05 seconds of the video.
         thumbnail_path = f"data/cache/thumbnail_{video_id}.jpg"
-        import os
         from moviepy import ImageClip, concatenate_videoclips
         
         if os.path.exists(thumbnail_path):
