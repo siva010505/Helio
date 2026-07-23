@@ -35,9 +35,11 @@ jobs:
           cache: 'pip' # Automatically caches pip dependencies
 
       - name: Install System Dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg espeak-ng imagemagick
+          sudo apt-get install -yq ffmpeg espeak-ng imagemagick
           # Fix ImageMagick policy on Ubuntu to allow MoviePy to render text
           sudo sed -i '/<policy domain="path" rights="none" pattern="@\*"/d' /etc/ImageMagick-6/policy.xml
 
