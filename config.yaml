@@ -10,7 +10,7 @@ channels:
     commentary_style: "brief original opinion/reaction, not just a summary"
     brand:
       intro_sting_path: "assets/music/intro_sting.mp3"
-      font: "assets/fonts/Poppins-Bold.ttf"
+      font: "assets/fonts/Roboto-Bold.ttf"
       accent_color: "#FFD400"
       logo_path: "assets/logo/channel_logo.png"
       watermark_opacity: 0.65

@@ -133,7 +133,7 @@ def run_pipeline(
         if not dry_run:
             from src.agents.upload_agent import UploadAgent
             try:
-                youtube_video_id = UploadAgent(channel_config).upload_video(
+                youtube_video_id = UploadAgent(channel_config, db_session=db_session).upload_video(
                     video_path=video.file_path,
                     title=video.title,
                     description=video.description,

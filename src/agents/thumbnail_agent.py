@@ -7,6 +7,7 @@ to create a custom thumbnail for YouTube Shorts.
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Dict, Any
 
@@ -21,6 +22,7 @@ class ThumbnailAgent:
         brand_config = self.config.get("channels", [{}])[0].get("brand", {})
         self.font = brand_config.get("font", os.path.join(os.getcwd(), "assets", "fonts", "Roboto-Bold.ttf"))
         self.accent_color = brand_config.get("accent_color", "yellow")
+        self.logo_path = brand_config.get("logo_path", "assets/logo/channel_logo.png")
 
     def generate_thumbnail(self, video_path: str, title: str, video_id: int) -> str:
         """
@@ -30,14 +32,13 @@ class ThumbnailAgent:
         from moviepy import VideoFileClip
         from PIL import Image, ImageDraw, ImageFont
         import textwrap
-        import os
 
         output_path = self.cache_dir / f"thumbnail_{video_id}.jpg"
 
         try:
-            # Extract middle frame
+            # Extract frame at 1/3rd duration (often more interesting than the exact middle)
             clip = VideoFileClip(video_path)
-            t = clip.duration / 2.0
+            t = clip.duration / 3.0
             frame = clip.get_frame(t)
             clip.close()
 
@@ -69,6 +70,17 @@ class ThumbnailAgent:
             
             # Draw main text
             draw.text((x, y), wrapped_text, font=font, fill=self.accent_color, align="center")
+
+            # Add logo
+            if os.path.exists(self.logo_path):
+                try:
+                    logo = Image.open(self.logo_path).convert("RGBA")
+                    # Resize logo
+                    logo.thumbnail((200, 200))
+                    # Paste at top left with padding
+                    img.paste(logo, (50, 50), mask=logo)
+                except Exception as e:
+                    logger.warning("Failed to overlay logo: %s", e)
 
             img.save(output_path, "JPEG", quality=90)
             logger.info("[ThumbnailAgent] Thumbnail saved to %s", output_path)

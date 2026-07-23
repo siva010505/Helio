@@ -35,7 +35,10 @@ class CaptionAgent:
         # It downloads to ~/.cache/huggingface if not present
         try:
             # We default to CPU, INT8 for maximum compatibility on Windows without special setup
-            model = WhisperModel("tiny.en", device="cpu", compute_type="int8")
+            video_config = self.config.get("video", {})
+            model_size = video_config.get("caption_model", "tiny.en")
+            device = video_config.get("caption_device", "cpu")
+            model = WhisperModel(model_size, device=device, compute_type="int8")
             
             segments, info = model.transcribe(voice_path, word_timestamps=True)
             

@@ -4,6 +4,7 @@ Visual Director Agent
 Role:
 Retrieves stock footage candidates based on scene queries, extracts a keyframe,
 scores them using a Vision LLM, and aligns the final selected videos with precise audio timestamps.
+Tracks used footage to avoid repeats. Generates fallback kinetic cards if API fails.
 
 Inputs:
 - scenes (from VisualPlannerAgent)
@@ -19,13 +20,11 @@ import base64
 import logging
 import json
 import string
+import random
 from typing import Dict, Any, List
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
-
-# Fallback visual card if no video found
-FALLBACK_VISUAL = "assets/fallback_visual.mp4"
 
 def clean_text(text: str) -> str:
     return text.translate(str.maketrans('', '', string.punctuation)).lower().strip()
@@ -36,22 +35,36 @@ class VisualDirectorAgent:
         self.config = config
         self.cache_dir = Path("data/cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.history_file = Path("data/visual_history.json")
+        self._load_history()
+        
         self.pexels_api_key = os.environ.get("PEXELS_API_KEY")
+        self.pixabay_api_key = os.environ.get("PIXABAY_API_KEY")
+        self.unsplash_api_key = os.environ.get("UNSPLASH_API_KEY")
+
+    def _load_history(self):
+        if self.history_file.exists():
+            try:
+                with open(self.history_file, "r") as f:
+                    self.history = set(json.load(f))
+            except:
+                self.history = set()
+        else:
+            self.history = set()
+            
+    def _save_history(self):
+        with open(self.history_file, "w") as f:
+            json.dump(list(self.history), f)
 
     def _align_timings(self, scenes: List[Dict], words: List[Dict]) -> List[Dict]:
-        """
-        Aligns Whisper word timings to the LLM-generated scenes.
-        Returns a new list of scenes with 'start_time' and 'end_time'.
-        """
         aligned = []
         word_idx = 0
         total_words = len(words)
         
         for i, scene in enumerate(scenes):
-            scene_text = clean_text(scene["text_segment"])
+            scene_text = clean_text(scene.get("text_segment", ""))
             scene_start = words[word_idx]["start"] if word_idx < total_words else 0.0
             
-            # Accumulate words until we roughly match the scene text
             accumulated = []
             while word_idx < total_words:
                 w_clean = clean_text(words[word_idx]["word"])
@@ -59,14 +72,11 @@ class VisualDirectorAgent:
                     accumulated.append(w_clean)
                 word_idx += 1
                 
-                # Check if we have enough words or reached the end
-                # A simple heuristic: if accumulated length is near scene text length
                 if len(" ".join(accumulated)) >= len(scene_text) * 0.9:
                     break
                     
             scene_end = words[word_idx - 1]["end"] if word_idx > 0 else 0.0
             
-            # Ensure last scene reaches the very end
             if i == len(scenes) - 1 and word_idx < total_words:
                 scene_end = words[-1]["end"]
                 
@@ -79,25 +89,18 @@ class VisualDirectorAgent:
         return aligned
 
     def _search_pexels(self, query: str, limit: int = 3) -> List[str]:
-        """Search Pexels for portrait orientation videos and return their download URLs."""
-        if not self.pexels_api_key:
-            logger.warning("PEXELS_API_KEY missing, skipping Pexels search.")
-            return []
-            
+        if not self.pexels_api_key: return []
         url = "https://api.pexels.com/videos/search"
         headers = {"Authorization": self.pexels_api_key}
         params = {"query": query, "per_page": limit, "orientation": "portrait"}
-        
         try:
             r = requests.get(url, headers=headers, params=params, timeout=10)
             r.raise_for_status()
             data = r.json()
             videos = []
             for video in data.get("videos", []):
-                # Get highest quality portrait video file
                 files = video.get("video_files", [])
                 if not files: continue
-                # Sort by quality/resolution
                 files = sorted(files, key=lambda x: x.get("width", 0) * x.get("height", 0), reverse=True)
                 videos.append(files[0]["link"])
             return videos
@@ -105,91 +108,177 @@ class VisualDirectorAgent:
             logger.error("Pexels API error: %s", exc)
             return []
 
-    def _extract_frame_base64(self, video_path: str) -> str:
-        """Extract a middle frame from a video and convert to base64 jpeg."""
-        from moviepy import VideoFileClip
+    def _search_pixabay(self, query: str, limit: int = 3) -> List[str]:
+        if not self.pixabay_api_key: return []
+        url = "https://pixabay.com/api/videos/"
+        params = {"key": self.pixabay_api_key, "q": query, "per_page": limit + 3}
+        try:
+            r = requests.get(url, params=params, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            videos = []
+            for hit in data.get("hits", []):
+                vids = hit.get("videos", {})
+                if "large" in vids and vids["large"]["url"]:
+                    videos.append(vids["large"]["url"])
+                elif "medium" in vids and vids["medium"]["url"]:
+                    videos.append(vids["medium"]["url"])
+            return videos[:limit]
+        except Exception as exc:
+            logger.error("Pixabay API error: %s", exc)
+            return []
+
+    def _search_unsplash(self, query: str, limit: int = 3) -> List[str]:
+        if not self.unsplash_api_key: return []
+        url = "https://api.unsplash.com/search/photos"
+        headers = {"Authorization": f"Client-ID {self.unsplash_api_key}"}
+        params = {"query": query, "per_page": limit, "orientation": "portrait"}
+        try:
+            r = requests.get(url, headers=headers, params=params, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            images = []
+            for res in data.get("results", []):
+                urls = res.get("urls", {})
+                if "regular" in urls:
+                    images.append(urls["regular"])
+            return images
+        except Exception as exc:
+            logger.error("Unsplash API error: %s", exc)
+            return []
+
+    def _extract_frame_base64(self, file_path: str) -> str:
         from PIL import Image
         import io
         
         try:
-            clip = VideoFileClip(video_path)
-            t = clip.duration / 2.0
-            frame = clip.get_frame(t)
-            clip.close()
-            
-            img = Image.fromarray(frame)
-            # Resize slightly to save token bandwidth for LLM
+            if file_path.lower().endswith(('.mp4', '.mov', '.avi')):
+                from moviepy import VideoFileClip
+                clip = VideoFileClip(file_path)
+                t = clip.duration / 2.0
+                frame = clip.get_frame(t)
+                clip.close()
+                img = Image.fromarray(frame)
+            else:
+                img = Image.open(file_path)
+                
+            if img.mode != "RGB":
+                img = img.convert("RGB")
             img.thumbnail((512, 512))
             buffer = io.BytesIO()
             img.save(buffer, format="JPEG", quality=80)
             return base64.b64encode(buffer.getvalue()).decode("utf-8")
         except Exception as exc:
-            logger.error("Failed to extract frame from %s: %s", video_path, exc)
+            logger.error("Failed to extract frame from %s: %s", file_path, exc)
             return ""
 
-    def _score_video(self, video_path: str, description: str) -> float:
-        """Score video relevance using Vision LLM."""
+    def _score_video(self, file_path: str, description: str) -> float:
         if not self.config.get("visual_sources", {}).get("vision_scoring", {}).get("enabled", True):
-            return 10.0  # Return perfect score if scoring disabled
+            return 10.0
 
-        b64_image = self._extract_frame_base64(video_path)
+        b64_image = self._extract_frame_base64(file_path)
         if not b64_image:
-            logger.warning("Frame extraction failed for %s, skipping vision score.", video_path)
             return 0.0
 
         try:
-            # description_prompt first, then the base64 image — order matters!
             result = self.llm_client.score_image(description, b64_image)
             score = float(result.get("score", 0.0))
-            logger.info("Scored video %s -> %.1f  reason: %s", video_path, score, result.get("reason", ""))
+            logger.info("Scored candidate %s -> %.1f  reason: %s", file_path, score, result.get("reason", ""))
             return score
         except Exception as exc:
             logger.error("Vision scoring failed: %s", exc)
             return 0.0
 
+    def _create_fallback_card(self, text: str, duration: float, output_path: str) -> str:
+        from moviepy import ColorClip, TextClip, CompositeVideoClip
+        
+        brand = self.config.get("channels", [{}])[0].get("brand", {})
+        font_path = brand.get("font", os.path.join(os.getcwd(), "assets", "fonts", "Roboto-Bold.ttf"))
+        
+        bg = ColorClip(size=(1080, 1920), color=(30, 30, 30), duration=duration)
+        txt = TextClip(
+            font=font_path,
+            text=text,
+            font_size=80,
+            color="white",
+            size=(900, None),
+            method="caption",
+            text_align="center"
+        )
+        txt = txt.with_position("center").with_duration(duration)
+        comp = CompositeVideoClip([bg, txt])
+        comp.write_videofile(output_path, fps=24, logger=None, audio=False)
+        
+        bg.close()
+        txt.close()
+        comp.close()
+        return output_path
+
     def select_visuals(self, scenes: List[Dict], words: List[Dict]) -> List[Dict]:
-        """
-        Main entrypoint: Align times, fetch footage, score, select best.
-        """
         logger.info("[VisualDirector] Aligning timings for %d scenes.", len(scenes))
         aligned_scenes = self._align_timings(scenes, words)
         
         final_scenes = []
         for scene in aligned_scenes:
-            logger.info("[VisualDirector] Processing Scene %d: '%s'", scene['scene_number'], scene['search_query'])
+            query = scene.get('search_query', '')
+            logger.info("[VisualDirector] Processing Scene %d: '%s'", scene.get('scene_number', 0), query)
             
-            urls = self._search_pexels(scene['search_query'])
-            best_video_path = None
+            urls = []
+            urls.extend(self._search_pexels(query))
+            urls.extend(self._search_pixabay(query))
+            urls.extend(self._search_unsplash(query))
+            
+            fresh_urls = [u for u in urls if u not in self.history]
+            used_urls = [u for u in urls if u in self.history]
+            urls_to_check = (fresh_urls + used_urls)[:5]
+            
+            best_file_path = None
             best_score = -1.0
+            best_url = None
             
-            # Download and score each candidate
-            for idx, url in enumerate(urls):
-                cand_path = self.cache_dir / f"cand_s{scene['scene_number']}_{idx}.mp4"
+            candidates_to_clean = []
+            
+            for idx, url in enumerate(urls_to_check):
+                ext = ".jpg" if "unsplash" in url else ".mp4"
+                cand_path = self.cache_dir / f"cand_s{scene.get('scene_number', 0)}_{idx}{ext}"
                 try:
-                    logger.debug("Downloading candidate %s", url)
                     r = requests.get(url, stream=True, timeout=20)
                     r.raise_for_status()
                     with open(cand_path, "wb") as f:
                         for chunk in r.iter_content(chunk_size=8192):
                             f.write(chunk)
                             
-                    score = self._score_video(str(cand_path), scene["description"])
+                    score = self._score_video(str(cand_path), scene.get("description", ""))
                     if score > best_score:
                         best_score = score
-                        best_video_path = str(cand_path)
+                        best_file_path = str(cand_path)
+                        best_url = url
                         
-                    # Cleanup non-best to save space?
-                    # We will leave cleanup for later or just overwrite
+                    candidates_to_clean.append(str(cand_path))
                 except Exception as exc:
                     logger.error("Failed handling candidate %d: %s", idx, exc)
                     
-            if not best_video_path:
-                logger.warning("No valid video found for Scene %d. Using fallback.", scene['scene_number'])
-                best_video_path = FALLBACK_VISUAL
+            if best_file_path:
+                self.history.add(best_url)
+                self._save_history()
+            else:
+                logger.warning("No valid visual found for Scene %d. Generating fallback card.", scene.get('scene_number', 0))
+                duration = scene.get("end_time", 0.0) - scene.get("start_time", 0.0)
+                if duration <= 0:
+                    duration = 3.0
+                fallback_path = str(self.cache_dir / f"fallback_s{scene.get('scene_number', 0)}.mp4")
+                best_file_path = self._create_fallback_card(query, duration, fallback_path)
+                
+            for path in candidates_to_clean:
+                if path != best_file_path and os.path.exists(path):
+                    try:
+                        os.remove(path)
+                    except:
+                        pass
                 
             final_scenes.append({
                 **scene,
-                "video_path": best_video_path
+                "video_path": best_file_path
             })
             
         return final_scenes

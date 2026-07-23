@@ -43,34 +43,59 @@ class VisualPlannerAgent:
     def __init__(self, llm_client):
         self.llm_client = llm_client
 
+    def _validate_reconstruction(self, script_text: str, scenes: List[Dict[str, Any]]) -> bool:
+        import string
+        def clean(text: str) -> str:
+            return text.translate(str.maketrans('', '', string.punctuation)).lower().split()
+        
+        orig_words = clean(script_text)
+        reconstructed = []
+        for s in scenes:
+            reconstructed.extend(clean(s.get("text_segment", "")))
+            
+        if not orig_words: return True
+        ratio = len(reconstructed) / len(orig_words)
+        return 0.9 <= ratio <= 1.1
+
     def plan_visuals(self, script_text: str) -> List[Dict[str, Any]]:
         """
-        Generate a shot list for the given script.
+        Generate a shot list for the given script with a retry loop on failure.
         """
         logger.info("[VisualPlannerAgent] Planning visuals for script...")
-        
         user_prompt = f"Break down this script into scenes:\n\n{script_text}"
         
-        try:
-            scenes_json = self.llm_client.generate_json(
-                system_prompt=VISUAL_PLANNER_PROMPT,
-                user_prompt=user_prompt,
-                temperature=0.7,
-                max_tokens=1500
-            )
-            
-            # If the LLM returned a dict with a key instead of a list, extract it.
-            if isinstance(scenes_json, dict):
-                for k, v in scenes_json.items():
-                    if isinstance(v, list):
-                        scenes_json = v
-                        break
-            
-            if not isinstance(scenes_json, list):
-                raise ValueError(f"LLM did not return a list of scenes. Got: {type(scenes_json)}")
+        max_attempts = 2
+        for attempt in range(1, max_attempts + 1):
+            try:
+                scenes_json = self.llm_client.generate_json(
+                    system_prompt=VISUAL_PLANNER_PROMPT,
+                    user_prompt=user_prompt,
+                    temperature=0.7,
+                    max_tokens=1500
+                )
                 
-            logger.info("[VisualPlannerAgent] Successfully planned %d scenes.", len(scenes_json))
-            return scenes_json
-        except Exception as exc:
-            logger.error("[VisualPlannerAgent] Visual planning failed: %s", exc)
-            raise
+                # If the LLM returned a dict with a key instead of a list, extract it.
+                if isinstance(scenes_json, dict):
+                    for k, v in scenes_json.items():
+                        if isinstance(v, list):
+                            scenes_json = v
+                            break
+                
+                if not isinstance(scenes_json, list):
+                    raise ValueError(f"LLM did not return a list of scenes. Got: {type(scenes_json)}")
+                    
+                if not self._validate_reconstruction(script_text, scenes_json):
+                    if attempt < max_attempts:
+                        logger.warning(f"[VisualPlannerAgent] Validation failed on attempt {attempt}. Retrying...")
+                        continue
+                    else:
+                        logger.warning("[VisualPlannerAgent] Validation failed on final attempt. Proceeding anyway.")
+                    
+                logger.info("[VisualPlannerAgent] Successfully planned %d scenes.", len(scenes_json))
+                return scenes_json
+            except Exception as exc:
+                if attempt < max_attempts:
+                    logger.warning(f"[VisualPlannerAgent] Attempt {attempt} failed: {exc}. Retrying...")
+                else:
+                    logger.error("[VisualPlannerAgent] Visual planning failed on final attempt: %s", exc)
+                    raise

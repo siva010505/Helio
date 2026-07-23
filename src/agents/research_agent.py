@@ -2,15 +2,13 @@
 Research Agent
 
 Role:
-Discovers fresh, trending topic candidates for the channel's niche via web search.
-Uses Tavily as the primary source and DuckDuckGo as a zero-key fallback.
+Discovers fresh, evergreen narrative-driven topic candidates for the channel's niche via LLM brainstorming.
 Deduplicates against the last N topics already used/selected for this channel
 before writing candidates to the database.
 
 Inputs:
 - channel_config (dict): One channel's config block from config.yaml.
 - channel_id (int): DB primary key of the channel row.
-- db_session: SQLAlchemy session.
 
 Outputs:
 - List[dict]: Candidate topic dicts with keys:
@@ -34,87 +32,22 @@ MAX_CANDIDATES = 15
 # Minimum distinct candidates required before handing off to scoring
 MIN_CANDIDATES = 3
 
+BRAINSTORM_PROMPT = """\
+You are an expert content strategist for a YouTube Shorts channel.
+Brainstorm a list of 15 highly engaging, evergreen, narrative-driven topic candidates for the following niche.
+Niche: {niche}
 
-def _search_tavily(query: str, niche: str, max_results: int = 10) -> list[dict]:
-    """
-    Search Tavily for recent news on the given query.
-
-    Returns:
-        List of dicts with keys: title, url, content
-    """
-    try:
-        from tavily import TavilyClient
-        api_key = os.getenv("TAVILY_API_KEY")
-        if not api_key:
-            logger.warning("TAVILY_API_KEY not set — skipping Tavily search.")
-            return []
-
-        client = TavilyClient(api_key=api_key)
-        response = client.search(
-            query=query,
-            search_depth="advanced",
-            include_answer=False,
-            include_raw_content=False,
-            max_results=max_results,
-            topic="news",
-        )
-        results = response.get("results", [])
-        logger.info("Tavily returned %d results for query: %s", len(results), query)
-        return [
-            {
-                "title": r.get("title", ""),
-                "url": r.get("url", ""),
-                "description": r.get("content", "")[:300],
-                "source": "tavily",
-            }
-            for r in results
-            if r.get("title")
-        ]
-    except Exception as exc:
-        logger.warning("Tavily search failed: %s", exc)
-        return []
-
-
-def _search_duckduckgo(query: str, max_results: int = 10) -> list[dict]:
-    """
-    Search DuckDuckGo News as a free fallback.
-
-    Returns:
-        List of dicts with keys: title, url, description, source
-    """
-    try:
-        from duckduckgo_search import DDGS
-
-        with DDGS() as ddgs:
-            results = list(ddgs.news(query, max_results=max_results))
-
-        logger.info("DuckDuckGo returned %d results for query: %s", len(results), query)
-        return [
-            {
-                "title": r.get("title", ""),
-                "url": r.get("url", ""),
-                "description": r.get("body", "")[:300],
-                "source": "duckduckgo",
-            }
-            for r in results
-            if r.get("title")
-        ]
-    except Exception as exc:
-        logger.warning("DuckDuckGo search failed: %s", exc)
-        return []
-
-
-def _build_search_queries(niche: str) -> list[str]:
-    """Generate a small set of diverse search queries for the niche."""
-    base = niche.lower().strip()
-    today_str = datetime.utcnow().strftime("%B %Y")
-    return [
-        f"{base} news {today_str}",
-        f"latest {base} breakthroughs",
-        f"trending {base} topics",
-        f"{base} controversy OR announcement",
+Avoid recent news. Focus on psychological, behavioral, historical, or scientific mysteries that tell a compelling story.
+Output ONLY a valid JSON object matching this schema:
+{{
+    "candidates": [
+        {{
+            "title": "A highly engaging title under 50 characters",
+            "description": "A 1-2 sentence description of the narrative arc."
+        }}
     ]
-
+}}
+"""
 
 def _deduplicate(
     candidates: list[dict],
@@ -168,12 +101,13 @@ class ResearchAgent:
     Discovers and persists candidate topics for a channel.
 
     Usage:
-        agent = ResearchAgent(db_session)
+        agent = ResearchAgent(db_session, llm_client)
         candidates = agent.fetch_candidate_topics(channel_config, channel_id)
     """
 
-    def __init__(self, db_session):
+    def __init__(self, db_session, llm_client):
         self.db = db_session
+        self.llm = llm_client
 
     # ------------------------------------------------------------------
     # Public API
@@ -195,7 +129,7 @@ class ResearchAgent:
             List of persisted candidate topic dicts (topic_text, source, description, db_id).
         """
         niche = channel_config.get("niche", "")
-        logger.info("[ResearchAgent] Researching niche: %s", niche)
+        logger.info("[ResearchAgent] Brainstorming niche: %s", niche)
 
         # ── 1. Load recently-used topics for dedup ────────────────────
         lookback = datetime.utcnow() - timedelta(days=DEDUP_LOOKBACK_DAYS)
@@ -214,17 +148,23 @@ class ResearchAgent:
             len(existing_topics),
         )
 
-        # ── 2. Search ─────────────────────────────────────────────────
-        queries = _build_search_queries(niche)
-        all_raw: list[dict] = []
-        for q in queries:
-            results = _search_tavily(q, niche, max_results=8)
-            if not results:
-                logger.info("Tavily empty for '%s' — falling back to DuckDuckGo.", q)
-                results = _search_duckduckgo(q, max_results=8)
-            all_raw.extend(results)
-            if len(all_raw) >= MAX_CANDIDATES * 2:
-                break
+        # ── 2. Brainstorm via LLM ─────────────────────────────────────
+        try:
+            system_prompt = BRAINSTORM_PROMPT.format(niche=niche)
+            user_prompt = "Generate the JSON response with 15 candidates now."
+            
+            response = self.llm.generate_json(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=0.8,
+                max_tokens=1500
+            )
+            all_raw = response.get("candidates", [])
+            for raw in all_raw:
+                raw["source"] = "llm_brainstorm"
+        except Exception as exc:
+            logger.error("[ResearchAgent] LLM brainstorming failed: %s", exc)
+            all_raw = []
 
         logger.info("[ResearchAgent] Total raw results collected: %d", len(all_raw))
 
@@ -237,8 +177,7 @@ class ResearchAgent:
 
         if len(unique) < MIN_CANDIDATES:
             logger.warning(
-                "[ResearchAgent] Only %d candidates found (minimum is %d). "
-                "Consider broadening the niche or checking API keys.",
+                "[ResearchAgent] Only %d candidates found (minimum is %d). ",
                 len(unique), MIN_CANDIDATES,
             )
 
@@ -257,6 +196,7 @@ class ResearchAgent:
             persisted.append(
                 {
                     "db_id": topic_row.id,
+                    "channel_id": channel_id,
                     "topic_text": item["title"],
                     "description": item.get("description", ""),
                     "url": item.get("url", ""),

@@ -62,7 +62,9 @@ class SEOAgent:
         """
         logger.info("[SEOAgent] Generating metadata for topic: '%s'", topic_text)
 
-        channel_id = channel_config.get("db_id", 1)
+        channel_id = channel_config.get("db_id")
+        if channel_id is None:
+            raise ValueError("[SEOAgent] Missing 'db_id' in channel_config. Channel ID must be properly propagated.")
         addendum = self._get_performance_addendum(channel_id)
         system_prompt = SEO_PROMPT + addendum
 

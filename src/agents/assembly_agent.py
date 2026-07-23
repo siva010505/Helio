@@ -2,9 +2,9 @@
 Assembly Agent
 
 Role:
-Takes the voice track, the stock videos, and the Whisper word-level timestamps,
+Takes the voice track, the stock videos/images, and the Whisper word-level timestamps,
 and combines them using moviepy into a final 1080x1920 vertical video.
-It dynamically overlays captions with custom styling.
+It dynamically overlays captions with custom styling and adds Ken Burns to images.
 """
 
 import os
@@ -20,26 +20,24 @@ class AssemblyAgent:
         self.cache_dir = Path("data/cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         
-        # Load configs
         self.resolution = tuple(map(int, self.config.get("video", {}).get("resolution", "1080x1920").split('x')))
         
         brand_config = self.config.get("channels", [{}])[0].get("brand", {})
         self.font = brand_config.get("font", os.path.join(os.getcwd(), "assets", "fonts", "Roboto-Bold.ttf"))
-        # Ensure fallback font if custom font not found
         if not os.path.exists(self.font):
             logger.warning("Font %s not found. Captions may fail to render.", self.font)
             self.font = os.path.join(os.getcwd(), "assets", "fonts", "Roboto-Bold.ttf")
             
         self.accent_color = brand_config.get("accent_color", "yellow")
-        self.bgm_path = brand_config.get("intro_sting_path", "")
+        
+        # Priority 1: Separate intro_sting_path and bgm_path
+        self.intro_sting_path = brand_config.get("intro_sting_path", "")
+        self.bgm_path = brand_config.get("bgm_path", "")
+        
         self.logo_path = brand_config.get("logo_path", "assets/logo/channel_logo.png")
         self.watermark_opacity = float(brand_config.get("watermark_opacity", 0.65))
 
     def _resize_and_crop(self, clip, target_resolution):
-        """
-        Resizes and crops a VideoFileClip to the target vertical resolution (e.g. 1080x1920)
-        by maintaining aspect ratio and center-cropping.
-        """
         from moviepy.video.fx.Crop import Crop
         from moviepy.video.fx.Resize import Resize
         
@@ -50,32 +48,52 @@ class AssemblyAgent:
         clip_ratio = clip_w / clip_h
         
         if clip_ratio > target_ratio:
-            # Clip is wider than target. Scale based on height.
             resized_clip = clip.with_effects([Resize(height=target_h)])
-            # Center crop width
             new_w = resized_clip.size[0]
             x_center = new_w / 2
             cropped = resized_clip.with_effects([Crop(x1=x_center - target_w/2, y1=0, x2=x_center + target_w/2, y2=target_h)])
         else:
-            # Clip is taller than target. Scale based on width.
             resized_clip = clip.with_effects([Resize(width=target_w)])
-            # Center crop height
             new_h = resized_clip.size[1]
             y_center = new_h / 2
             cropped = resized_clip.with_effects([Crop(x1=0, y1=y_center - target_h/2, x2=target_w, y2=y_center + target_h/2)])
             
         return cropped
 
+    def _apply_ken_burns(self, clip, duration):
+        from moviepy.video.fx.Resize import Resize
+        # Simple zoom effect for Ken Burns
+        def resize_func(t):
+            # Zoom in by 10% over the duration
+            return 1.0 + (0.1 * t / duration)
+            
+        # First resize and crop to base resolution
+        base_clip = self._resize_and_crop(clip, self.resolution)
+        
+        # Then apply the dynamic resize function
+        zoomed_clip = base_clip.with_effects([Resize(resize_func)])
+        
+        # Then crop again to maintain resolution after zoom
+        target_w, target_h = self.resolution
+        from moviepy.video.fx.Crop import Crop
+        
+        def crop_func(gf, t):
+            zoomed_frame = gf(t)
+            h, w, _ = zoomed_frame.shape
+            x1 = int((w - target_w) / 2)
+            y1 = int((h - target_h) / 2)
+            return zoomed_frame[y1:y1+target_h, x1:x1+target_w]
+            
+        from moviepy import VideoClip
+        ken_burns_clip = VideoClip(lambda t: crop_func(zoomed_clip.get_frame, t), duration=duration)
+        return ken_burns_clip
+
     def assemble_video(self, final_scenes: List[Dict], words_timing: List[Dict], voice_path: str, video_id: int) -> str:
-        """
-        Assembles the final video.
-        """
-        from moviepy import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, CompositeAudioClip, concatenate_videoclips
+        from moviepy import VideoFileClip, ImageClip, AudioFileClip, TextClip, CompositeVideoClip, CompositeAudioClip, concatenate_videoclips
         from moviepy.video.fx.Loop import Loop
         
         logger.info("[AssemblyAgent] Starting video assembly for video %s", video_id)
         
-        # 1. Prepare visual scene clips
         scene_clips = []
         for scene in final_scenes:
             duration = scene["end_time"] - scene["start_time"]
@@ -83,40 +101,45 @@ class AssemblyAgent:
                 continue
                 
             try:
-                # Load clip
-                clip = VideoFileClip(scene["video_path"])
-                
-                # Resize and crop to 9:16
-                clip = self._resize_and_crop(clip, self.resolution)
-                
-                # Adjust duration (loop if too short, trim if too long)
-                if clip.duration < duration:
-                    clip = clip.with_effects([Loop(duration=duration)])
+                path = scene["video_path"]
+                if path.lower().endswith(('.jpg', '.jpeg', '.png')):
+                    clip = ImageClip(path).with_duration(duration)
+                    clip = self._apply_ken_burns(clip, duration)
                 else:
-                    clip = clip.subclipped(0, duration)
+                    clip = VideoFileClip(path)
+                    clip = clip.without_audio() # Priority 1: Strip audio
+                    clip = self._resize_and_crop(clip, self.resolution)
+                    
+                    if clip.duration < duration:
+                        clip = clip.with_effects([Loop(duration=duration)])
+                    else:
+                        clip = clip.subclipped(0, duration)
                     
                 scene_clips.append(clip)
             except Exception as exc:
                 logger.error("Failed to process clip for scene %s: %s", scene.get("scene_number"), exc)
-                # Fallback blank clip if fails
                 from moviepy import ColorClip
                 fallback = ColorClip(size=self.resolution, color=(0,0,0), duration=duration)
                 scene_clips.append(fallback)
                 
-        # 2. Concatenate base visuals
         logger.info("[AssemblyAgent] Concatenating %d scenes.", len(scene_clips))
         main_video = concatenate_videoclips(scene_clips, method="compose")
         
-        # 3. Add Voice Audio
         logger.info("[AssemblyAgent] Adding voice audio from %s", voice_path)
         voice_clip = AudioFileClip(voice_path)
         
-        # Ensure video duration matches audio duration
         if main_video.duration > voice_clip.duration:
             main_video = main_video.subclipped(0, voice_clip.duration)
             
-        # 4. Add Background Music (if available)
         audio_clips = [voice_clip]
+        
+        if self.intro_sting_path and os.path.exists(self.intro_sting_path):
+            try:
+                sting_clip = AudioFileClip(self.intro_sting_path)
+                audio_clips.append(sting_clip)
+            except Exception as exc:
+                logger.warning("Failed to load intro sting: %s", exc)
+
         if self.bgm_path and os.path.exists(self.bgm_path):
             try:
                 from moviepy.audio.fx.MultiplyVolume import MultiplyVolume
@@ -130,18 +153,15 @@ class AssemblyAgent:
         final_audio = CompositeAudioClip(audio_clips)
         main_video = main_video.with_audio(final_audio)
         
-        # 5. Add Captions
         logger.info("[AssemblyAgent] Generating caption overlays...")
         caption_clips = []
         
-        # Word by word animation
         for word in words_timing:
             w_text = word["word"].strip()
             if not w_text:
                 continue
                 
             try:
-                # Create text clip with stroke for visibility
                 txt_clip = TextClip(
                     text=w_text,
                     font=self.font,
@@ -154,9 +174,7 @@ class AssemblyAgent:
                     text_align="center"
                 )
                 
-                # Position near bottom center
                 txt_clip = txt_clip.with_position(("center", 1400))
-                # Set timing
                 txt_clip = txt_clip.with_start(word["start"]).with_end(word["end"])
                 
                 caption_clips.append(txt_clip)
@@ -168,19 +186,23 @@ class AssemblyAgent:
             
         final_clips = [main_video] + caption_clips
         
-        # Add watermark if present
         if self.logo_path and os.path.exists(self.logo_path):
             try:
                 from moviepy import ImageClip
+                from moviepy.video.fx.Resize import Resize
                 watermark = ImageClip(self.logo_path)
                 
-                # Robust opacity
+                # Resize the watermark so it's a small corner logo (e.g., 150px wide)
+                if hasattr(watermark, "with_effects"):
+                    watermark = watermark.with_effects([Resize(width=150)])
+                elif hasattr(watermark, "resize"):
+                    watermark = watermark.resize(width=150)
+                
                 if hasattr(watermark, "with_opacity"):
                     watermark = watermark.with_opacity(self.watermark_opacity)
                 elif hasattr(watermark, "set_opacity"):
                     watermark = watermark.set_opacity(self.watermark_opacity)
                     
-                # Robust position and duration
                 if hasattr(watermark, "with_position"):
                     watermark = watermark.with_position((40, 40)).with_duration(main_video.duration)
                 else:
@@ -193,7 +215,6 @@ class AssemblyAgent:
 
         main_video = CompositeVideoClip(final_clips)
             
-        # 6. Export
         output_path = self.cache_dir / f"final_video_{video_id}.mp4"
         logger.info("[AssemblyAgent] Exporting final video to %s", output_path)
         
@@ -203,9 +224,9 @@ class AssemblyAgent:
                 fps=24,
                 codec="libx264",
                 audio_codec="aac",
-                preset="ultrafast",  # Use faster encoding for tests
+                preset="ultrafast",
                 threads=4,
-                logger=None # Suppress moviepy progress bar in logs
+                logger=None
             )
             logger.info("[AssemblyAgent] Export successful!")
         except Exception as exc:
@@ -214,5 +235,8 @@ class AssemblyAgent:
         finally:
             main_video.close()
             voice_clip.close()
+            # Explicitly close TextClips to prevent memory leaks
+            for clip in caption_clips:
+                clip.close()
             
         return str(output_path)

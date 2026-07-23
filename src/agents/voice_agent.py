@@ -18,6 +18,7 @@ import subprocess
 import logging
 import requests
 import json
+import shutil
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,9 @@ class VoiceAgent:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.models_dir = Path("data/models")
         self.models_dir.mkdir(parents=True, exist_ok=True)
+        
+        if not shutil.which("piper") and not shutil.which("piper.exe"):
+            raise RuntimeError("Piper TTS executable not found on PATH. Please install Piper and ensure it is accessible via the command line.")
 
     def _download_model(self, voice_name: str) -> tuple[Path, Path]:
         """

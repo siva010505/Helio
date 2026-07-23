@@ -36,7 +36,7 @@ SCORE_WEIGHTS = {
     "novelty": 0.25,
     "virality": 0.35,
     "hook_potential": 0.25,
-    "freshness": 0.15,
+    "narrative_strength": 0.15,
 }
 
 SCORING_SYSTEM_PROMPT = """\
@@ -48,7 +48,7 @@ For each topic, score it on four dimensions (each 0-10):
   - novelty: Is the topic genuinely new and not oversaturated on YouTube?
   - virality: How likely is it to be shared, commented on, or create strong emotion?
   - hook_potential: How easy is it to open with a hook that stops the scroll in the first 2 seconds?
-  - freshness: Is this breaking news / very recent (within the last few days)?
+  - narrative_strength: How strong is the underlying story or mystery?
 
 Be critical. Most topics should score 4-7. Reserve 9-10 for truly exceptional cases.
 
@@ -58,7 +58,7 @@ Respond with a JSON array. Each element maps to a topic (in the same order as th
     "novelty": <int 0-10>,
     "virality": <int 0-10>,
     "hook_potential": <int 0-10>,
-    "freshness": <int 0-10>,
+    "narrative_strength": <int 0-10>,
     "reasoning": "<one-sentence justification>"
   }
 """
@@ -102,15 +102,13 @@ def _parse_scores(raw: Any, candidates: list[dict]) -> list[dict]:
         logger.warning("ScoringAgent: expected JSON array, got %s", type(raw))
         raw = []
 
-    llm_map: dict[str, dict] = {item.get("topic_text", ""): item for item in raw}
-
-    for c in candidates:
-        item = llm_map.get(c["topic_text"], {})
+    for idx, c in enumerate(candidates):
+        item = raw[idx] if idx < len(raw) else {}
         dims = {
             "novelty": int(item.get("novelty", 0)),
             "virality": int(item.get("virality", 0)),
             "hook_potential": int(item.get("hook_potential", 0)),
-            "freshness": int(item.get("freshness", 0)),
+            "narrative_strength": int(item.get("narrative_strength", 0)),
         }
         # Clamp all dimensions to [0, 10]
         dims = {k: max(0, min(10, v)) for k, v in dims.items()}

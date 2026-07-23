@@ -27,14 +27,15 @@ logger = logging.getLogger(__name__)
 DEFAULT_SCRIPT_PROMPT = """\
 You are an expert YouTube Shorts scriptwriter. Your goal is to write a highly engaging, vertical short-form video script based on the provided topic.
 
-The script MUST follow this structure:
-1. Hook (first 2-3 seconds): Grab attention immediately.
-2. Core Content/Value: Deliver the main information concisely.
-3. Payoff/Twist: A surprising fact, conclusion, or original opinion.
+The script MUST follow this narrative mini-story arc structure:
+1. Hook (first 2-3 seconds): Grab attention immediately with a setup.
+2. Core Content/Tension: Deliver the main information and build tension/complication.
+3. Payoff/Resolution: A surprising fact, resolution, or original insight.
 4. CTA (Call to Action): A quick sign-off (e.g. "Subscribe for more").
 
 Your constraints:
 - Tone: {tone}
+- Commentary Style: {commentary_style}
 - Target length: ~{target_length_seconds} seconds (approx {word_count} words).
 - Include brief commentary/original opinion, not just a dry summary.
 - The output MUST be a JSON object containing:
@@ -70,7 +71,8 @@ class ScriptAgent:
         )
         if prompt_version and prompt_version.prompt_text:
             logger.info(
-                "[ScriptAgent] Applying performance addendum from v%d.",
+                "[ScriptAgent] Found performance addendum for channel_id=%s (v%d).",
+                channel_id,
                 prompt_version.version_number,
             )
             return (
@@ -78,6 +80,8 @@ class ScriptAgent:
                 + prompt_version.prompt_text
                 + "\nApply these learnings while keeping the JSON output format exactly as specified above."
             )
+            
+        logger.info("[ScriptAgent] No performance addendum found for channel_id=%s.", channel_id)
         return ""
 
     def generate_script(self, topic: Dict[str, Any], channel_config: Dict[str, Any]) -> Dict[str, Any]:
@@ -89,6 +93,8 @@ class ScriptAgent:
         
         # Load constraints
         tone = channel_config.get("tone", "energetic and fast-paced")
+        brand = channel_config.get("brand", {})
+        commentary_style = brand.get("commentary_style", "insightful and thought-provoking")
         target_length = channel_config.get("target_length_seconds", 55)
         # 150 words is roughly 1 minute of fast-paced speech
         word_count = int(150 * (target_length / 60.0))
@@ -99,6 +105,7 @@ class ScriptAgent:
         system_prompt_template = DEFAULT_SCRIPT_PROMPT + addendum
         system_prompt = system_prompt_template.format(
             tone=tone,
+            commentary_style=commentary_style,
             target_length_seconds=target_length,
             word_count=word_count
         )

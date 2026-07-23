@@ -137,9 +137,10 @@ class OrchestratorAgent:
 
         # ── Ensure channel exists in DB ───────────────────────────────
         channel = self._ensure_channel_in_db(ch_cfg)
+        ch_cfg["db_id"] = channel.id
 
         # ── Phase 2: Research ─────────────────────────────────────────
-        research_agent = ResearchAgent(self.db)
+        research_agent = ResearchAgent(self.db, self.llm)
         try:
             candidates = research_agent.fetch_candidate_topics(
                 channel_config=ch_cfg,

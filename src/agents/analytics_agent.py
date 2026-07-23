@@ -17,17 +17,11 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any
 
 from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
+from src.youtube.oauth import get_authenticated_service
 
 from src.db.models import Video, PerformanceMetric
 
 logger = logging.getLogger(__name__)
-
-SCOPES = [
-    "https://www.googleapis.com/auth/youtube.readonly",
-    "https://www.googleapis.com/auth/yt-analytics.readonly",
-]
 
 # The maturity window — no video younger than this will be analysed
 MATURITY_HOURS = 72
@@ -47,33 +41,7 @@ class AnalyticsAgent:
     # ------------------------------------------------------------------
 
     def _authenticate(self):
-        creds = None
-        if os.path.exists(self.token_file):
-            with open(self.token_file, "rb") as f:
-                creds = pickle.load(f)
-
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                try:
-                    creds.refresh(Request())
-                except Exception as e:
-                    logger.warning("Token refresh failed, forcing re-auth: %s", e)
-                    creds = None
-
-            if not creds:
-                if not os.path.exists(self.credentials_file):
-                    raise FileNotFoundError(
-                        f"OAuth file '{self.credentials_file}' not found."
-                    )
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    self.credentials_file, SCOPES
-                )
-                creds = flow.run_local_server(port=0)
-
-            with open(self.token_file, "wb") as f:
-                pickle.dump(creds, f)
-
-        return creds
+        return get_authenticated_service(self.credentials_file, self.token_file)
 
     # ------------------------------------------------------------------
     # Eligibility filter (72-hour rule)
@@ -148,8 +116,7 @@ class AnalyticsAgent:
                     "comments,"
                     "estimatedMinutesWatched,"
                     "averageViewDuration,"
-                    "averageViewPercentage,"
-                    "annotationClickThroughRate"
+                    "averageViewPercentage"
                 ),
                 dimensions="video",
                 filters=f"video=={video_id}",
@@ -170,7 +137,7 @@ class AnalyticsAgent:
             "comments": int(row[3]),
             "average_view_duration": float(row[5]),
             "average_view_percentage": float(row[6]),
-            "ctr": float(row[7]) if len(row) > 7 else None,
+            "ctr": None,  # annotationClickThroughRate is deprecated/removed by YouTube
         }
 
     # ------------------------------------------------------------------

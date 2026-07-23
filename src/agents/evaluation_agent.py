@@ -151,11 +151,14 @@ class EvaluationAgent:
         """
         metrics_data = self._load_mature_metrics()
 
-        if len(metrics_data) < 3:
+        min_records = self.config.get("learning", {}).get("min_videos_before_adjusting", 5)
+
+        if len(metrics_data) < min_records:
             logger.info(
                 "[EvaluationAgent] Insufficient data (%d records). "
-                "Need at least 3 mature metrics. Skipping.",
+                "Need at least %d mature metrics. Skipping.",
                 len(metrics_data),
+                min_records,
             )
             return {"status": "skipped", "reason": "insufficient_data"}
 
@@ -188,8 +191,10 @@ class EvaluationAgent:
         # Apply to every configured channel
         channels = self.config.get("channels", [])
         for channel in channels:
-            # Fetch channel DB id (simplified — use name to look up or default to 1)
-            channel_id = channel.get("db_id", 1)
+            # Fetch channel DB id
+            channel_id = channel.get("db_id")
+            if channel_id is None:
+                raise ValueError(f"[EvaluationAgent] Missing 'db_id' for channel '{channel.get('name')}'.")
 
             for agent_name in IMPROVABLE_AGENTS:
                 update_text = agent_updates.get(agent_name)
