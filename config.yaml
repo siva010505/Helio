@@ -2,7 +2,6 @@ channels:
   - name: "psychology_shorts"
     niche: "Psychology & human behavior (narrative format)"
     videos_per_day: 1
-    upload_times: ["08:30", "20:00"]
     target_length_seconds: 75
     tone: "mysterious, narrative, intriguing, hook in first 2 seconds"
     voice: "piper:en_US-ryan-high"
