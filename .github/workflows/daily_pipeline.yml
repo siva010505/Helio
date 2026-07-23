@@ -91,6 +91,7 @@ jobs:
           # Only commit if there are changes to the DB
           if ! git diff-index --quiet HEAD; then
             git commit -m "chore(db): auto-update agent.db state [skip ci]"
+            git pull --rebase origin master
             git push
           else
             echo "No changes in database to commit."
