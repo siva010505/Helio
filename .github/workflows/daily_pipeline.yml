@@ -7,11 +7,6 @@ on:
     # 20:00 UTC = 1:30 AM IST
     - cron: '0 20 * * *'
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: 'Run as a dry-run (no upload)'
-        type: boolean
-        default: false
 
 permissions:
   contents: write  # Required to commit the agent.db back to the repo
@@ -72,11 +67,7 @@ jobs:
           # Ensure YouTube API uses the generated token file
           OAUTHLIB_INSECURE_TRANSPORT: "1" 
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
-            python scripts/run_daily_pipeline.py --dry-run
-          else
-            python scripts/run_daily_pipeline.py
-          fi
+          python scripts/run_daily_pipeline.py
 
       - name: Commit Database State
         if: always() # Run this even if the pipeline fails, to track partial state
