@@ -295,6 +295,23 @@ class AssemblyAgent:
 
         main_video = CompositeVideoClip(final_clips)
             
+        # --- Thumbnail Baking for YouTube Shorts ---
+        # YouTube API ignores custom thumbnails for Shorts and often shows a blank grey screen if we try.
+        # Workaround: Bake the thumbnail as the very first 0.05 seconds of the video.
+        thumbnail_path = f"data/cache/thumbnail_{video_id}.jpg"
+        import os
+        from moviepy import ImageClip, concatenate_videoclips
+        
+        if os.path.exists(thumbnail_path):
+            logger.info("[AssemblyAgent] Baking thumbnail into first frame from %s", thumbnail_path)
+            thumb_clip = ImageClip(thumbnail_path).with_duration(0.05)
+            # Ensure thumbnail matches the video size
+            thumb_clip = thumb_clip.resize(newsize=main_video.size)
+            
+            # Prepend the thumbnail clip to the main composite video
+            main_video = concatenate_videoclips([thumb_clip, main_video], method="compose")
+        # -------------------------------------------
+
         output_path = self.cache_dir / f"final_video_{video_id}.mp4"
         logger.info("[AssemblyAgent] Exporting final video to %s", output_path)
         
