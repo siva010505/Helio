@@ -19,7 +19,8 @@ from typing import Dict, Any, List
 logger = logging.getLogger(__name__)
 
 VISUAL_PLANNER_PROMPT = """\
-You are an expert video director for YouTube Shorts. Your job is to break down the provided script into 3 to 6 distinct visual scenes.
+You are an expert video director for YouTube Shorts. Your job is to break down the provided script into distinct visual scenes.
+Based on the natural speaking pace, aim for each scene to average around {scene_target_seconds} seconds in length.
 
 For each scene, provide:
 - "scene_number": The sequential number (1, 2, 3...)
@@ -57,18 +58,24 @@ class VisualPlannerAgent:
         ratio = len(reconstructed) / len(orig_words)
         return 0.9 <= ratio <= 1.1
 
-    def plan_visuals(self, script_text: str) -> List[Dict[str, Any]]:
+    def plan_visuals(self, script_text: str, channel_config: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """
         Generate a shot list for the given script with a retry loop on failure.
         """
         logger.info("[VisualPlannerAgent] Planning visuals for script...")
         user_prompt = f"Break down this script into scenes:\n\n{script_text}"
         
+        target_seconds = 2.5
+        if channel_config:
+            target_seconds = channel_config.get("video", {}).get("scene_target_seconds", 2.5)
+            
+        system_prompt = VISUAL_PLANNER_PROMPT.format(scene_target_seconds=target_seconds)
+
         max_attempts = 2
         for attempt in range(1, max_attempts + 1):
             try:
                 scenes_json = self.llm_client.generate_json(
-                    system_prompt=VISUAL_PLANNER_PROMPT,
+                    system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     temperature=0.7,
                     max_tokens=1500
@@ -90,6 +97,9 @@ class VisualPlannerAgent:
                         continue
                     else:
                         logger.warning("[VisualPlannerAgent] Validation failed on final attempt. Proceeding anyway.")
+                    
+                if len(scenes_json) < 10 and len(script_text.split()) > 100:
+                    logger.warning("[VisualPlannerAgent] LLM returned only %d scenes for a long script. It may have ignored the short-scene instruction.", len(scenes_json))
                     
                 logger.info("[VisualPlannerAgent] Successfully planned %d scenes.", len(scenes_json))
                 return scenes_json

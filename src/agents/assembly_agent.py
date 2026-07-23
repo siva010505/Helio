@@ -60,33 +60,109 @@ class AssemblyAgent:
             
         return cropped
 
-    def _apply_ken_burns(self, clip, duration):
+    def _apply_ken_burns(self, clip, duration, secondary_flashes=None):
+        import random
         from moviepy.video.fx.Resize import Resize
-        # Simple zoom effect for Ken Burns
-        def resize_func(t):
-            # Zoom in by 10% over the duration
-            return 1.0 + (0.1 * t / duration)
-            
-        # First resize and crop to base resolution
-        base_clip = self._resize_and_crop(clip, self.resolution)
         
-        # Then apply the dynamic resize function
+        ken_burns_cfg = self.config.get("editing", {}).get("ken_burns", {})
+        effects = ken_burns_cfg.get("effects", ["zoom_in"])
+        zoom_range = ken_burns_cfg.get("zoom_range", [0.08, 0.15])
+        
+        effect = random.choice(effects)
+        zoom_amount = random.uniform(zoom_range[0], zoom_range[1])
+        
+        punch_cfg = self.config.get("editing", {}).get("punch", {})
+        flash_scale = punch_cfg.get("secondary_zoom_flash_scale", 1.18)
+        flash_dur = punch_cfg.get("secondary_zoom_flash_duration_seconds", 0.25)
+        
+        def get_flash_multiplier(t):
+            if not secondary_flashes:
+                return 1.0
+            mult = 1.0
+            for flash_t in secondary_flashes:
+                dt = abs(t - flash_t)
+                if dt < flash_dur / 2:
+                    progress = 1.0 - (dt / (flash_dur / 2))
+                    mult = max(mult, 1.0 + (flash_scale - 1.0) * progress)
+            return mult
+
+        if effect == "zoom_in":
+            def resize_func(t):
+                return (1.0 + (zoom_amount * t / duration)) * get_flash_multiplier(t)
+        elif effect == "zoom_out":
+            def resize_func(t):
+                return ((1.0 + zoom_amount) - (zoom_amount * t / duration)) * get_flash_multiplier(t)
+        else:
+            def resize_func(t):
+                return (1.0 + zoom_amount) * get_flash_multiplier(t)
+            
+        base_clip = self._resize_and_crop(clip, self.resolution)
         zoomed_clip = base_clip.with_effects([Resize(resize_func)])
         
-        # Then crop again to maintain resolution after zoom
         target_w, target_h = self.resolution
         from moviepy.video.fx.Crop import Crop
         
         def crop_func(gf, t):
             zoomed_frame = gf(t)
             h, w, _ = zoomed_frame.shape
-            x1 = int((w - target_w) / 2)
+            
+            if effect == "pan_left":
+                max_x = max(0, w - target_w)
+                x1 = int(max_x - (max_x * t / duration))
+            elif effect == "pan_right":
+                max_x = max(0, w - target_w)
+                x1 = int(max_x * t / duration)
+            else:
+                x1 = int((w - target_w) / 2)
+                
             y1 = int((h - target_h) / 2)
+            
+            x1 = max(0, min(x1, w - target_w))
+            y1 = max(0, min(y1, h - target_h))
+            
             return zoomed_frame[y1:y1+target_h, x1:x1+target_w]
             
         from moviepy import VideoClip
         ken_burns_clip = VideoClip(lambda t: crop_func(zoomed_clip.get_frame, t), duration=duration)
         return ken_burns_clip
+
+    def _apply_zoom_flashes(self, clip, duration, secondary_flashes):
+        if not secondary_flashes:
+            return clip
+            
+        from moviepy.video.fx.Resize import Resize
+        from moviepy import VideoClip
+
+        punch_cfg = self.config.get("editing", {}).get("punch", {})
+        flash_scale = punch_cfg.get("secondary_zoom_flash_scale", 1.18)
+        flash_dur = punch_cfg.get("secondary_zoom_flash_duration_seconds", 0.25)
+        
+        def get_flash_multiplier(t):
+            mult = 1.0
+            for flash_t in secondary_flashes:
+                dt = abs(t - flash_t)
+                if dt < flash_dur / 2:
+                    progress = 1.0 - (dt / (flash_dur / 2))
+                    mult = max(mult, 1.0 + (flash_scale - 1.0) * progress)
+            return mult
+
+        target_w, target_h = self.resolution
+        
+        def resize_func(t):
+            return get_flash_multiplier(t)
+            
+        zoomed_clip = clip.with_effects([Resize(resize_func)])
+        
+        def crop_func(gf, t):
+            zoomed_frame = gf(t)
+            h, w, _ = zoomed_frame.shape
+            x1 = int((w - target_w) / 2)
+            y1 = int((h - target_h) / 2)
+            x1 = max(0, min(x1, w - target_w))
+            y1 = max(0, min(y1, h - target_h))
+            return zoomed_frame[y1:y1+target_h, x1:x1+target_w]
+            
+        return VideoClip(lambda t: crop_func(zoomed_clip.get_frame, t), duration=duration)
 
     def assemble_video(self, final_scenes: List[Dict], words_timing: List[Dict], voice_path: str, video_id: int) -> str:
         from moviepy import VideoFileClip, ImageClip, AudioFileClip, TextClip, CompositeVideoClip, CompositeAudioClip, concatenate_videoclips
@@ -100,11 +176,13 @@ class AssemblyAgent:
             if duration <= 0:
                 continue
                 
+            flashes = scene.get("zoom_flash_at", [])
+                
             try:
                 path = scene["video_path"]
                 if path.lower().endswith(('.jpg', '.jpeg', '.png')):
                     clip = ImageClip(path).with_duration(duration)
-                    clip = self._apply_ken_burns(clip, duration)
+                    clip = self._apply_ken_burns(clip, duration, secondary_flashes=flashes)
                 else:
                     clip = VideoFileClip(path)
                     clip = clip.without_audio() # Priority 1: Strip audio
@@ -114,6 +192,8 @@ class AssemblyAgent:
                         clip = clip.with_effects([Loop(duration=duration)])
                     else:
                         clip = clip.subclipped(0, duration)
+                        
+                    clip = self._apply_zoom_flashes(clip, duration, flashes)
                     
                 scene_clips.append(clip)
             except Exception as exc:

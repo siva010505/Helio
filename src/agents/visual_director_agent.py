@@ -88,64 +88,89 @@ class VisualDirectorAgent:
             
         return aligned
 
-    def _search_pexels(self, query: str, limit: int = 3) -> List[str]:
-        if not self.pexels_api_key: return []
-        url = "https://api.pexels.com/videos/search"
-        headers = {"Authorization": self.pexels_api_key}
-        params = {"query": query, "per_page": limit, "orientation": "portrait"}
-        try:
-            r = requests.get(url, headers=headers, params=params, timeout=10)
-            r.raise_for_status()
-            data = r.json()
-            videos = []
-            for video in data.get("videos", []):
-                files = video.get("video_files", [])
-                if not files: continue
-                files = sorted(files, key=lambda x: x.get("width", 0) * x.get("height", 0), reverse=True)
-                videos.append(files[0]["link"])
-            return videos
-        except Exception as exc:
-            logger.error("Pexels API error: %s", exc)
-            return []
-
-    def _search_pixabay(self, query: str, limit: int = 3) -> List[str]:
-        if not self.pixabay_api_key: return []
-        url = "https://pixabay.com/api/videos/"
-        params = {"key": self.pixabay_api_key, "q": query, "per_page": limit + 3}
-        try:
-            r = requests.get(url, params=params, timeout=10)
-            r.raise_for_status()
-            data = r.json()
-            videos = []
-            for hit in data.get("hits", []):
-                vids = hit.get("videos", {})
-                if "large" in vids and vids["large"]["url"]:
-                    videos.append(vids["large"]["url"])
-                elif "medium" in vids and vids["medium"]["url"]:
-                    videos.append(vids["medium"]["url"])
-            return videos[:limit]
-        except Exception as exc:
-            logger.error("Pixabay API error: %s", exc)
-            return []
-
-    def _search_unsplash(self, query: str, limit: int = 3) -> List[str]:
-        if not self.unsplash_api_key: return []
-        url = "https://api.unsplash.com/search/photos"
-        headers = {"Authorization": f"Client-ID {self.unsplash_api_key}"}
-        params = {"query": query, "per_page": limit, "orientation": "portrait"}
-        try:
-            r = requests.get(url, headers=headers, params=params, timeout=10)
-            r.raise_for_status()
-            data = r.json()
-            images = []
-            for res in data.get("results", []):
-                urls = res.get("urls", {})
-                if "regular" in urls:
-                    images.append(urls["regular"])
-            return images
-        except Exception as exc:
-            logger.error("Unsplash API error: %s", exc)
-            return []
+    def insert_punch_cutaways(self, final_scenes: List[Dict], punch_moments: List[Dict], channel_config: Dict) -> List[Dict]:
+        from src.services.stock_search import search_pexels, search_pixabay, search_unsplash
+        import requests
+        
+        punch_cfg = channel_config.get("editing", {}).get("punch", {})
+        cutaway_duration = punch_cfg.get("primary_cutaway_duration_seconds", 0.5)
+        
+        primary_punches = sorted([p for p in punch_moments if p.get("tier") == "primary"], key=lambda x: x["timestamp"])
+        secondary_punches = [p for p in punch_moments if p.get("tier") == "secondary"]
+        new_scenes = []
+        
+        for scene in final_scenes:
+            scene_start = scene["start_time"]
+            scene_end = scene["end_time"]
+            
+            scene_punches = [p for p in primary_punches if scene_start <= p["timestamp"] < scene_end]
+            
+            if not scene_punches:
+                new_scenes.append(scene)
+                continue
+                
+            current_start = scene_start
+            
+            for p in scene_punches:
+                punch_time = p["timestamp"]
+                
+                if punch_time > current_start:
+                    s1 = scene.copy()
+                    s1["start_time"] = current_start
+                    s1["end_time"] = punch_time
+                    new_scenes.append(s1)
+                    
+                query = p["word"]
+                logger.info("[VisualDirector] Fetching cutaway for punch word: '%s'", query)
+                
+                urls = []
+                urls.extend(search_pexels(query, limit=1, api_key=self.pexels_api_key))
+                urls.extend(search_pixabay(query, limit=1, api_key=self.pixabay_api_key))
+                urls.extend(search_unsplash(query, limit=1, api_key=self.unsplash_api_key))
+                
+                cutaway_path = None
+                for url in urls:
+                    ext = ".jpg" if "unsplash" in url else ".mp4"
+                    cand_path = self.cache_dir / f"punch_cutaway_{len(new_scenes)}{ext}"
+                    try:
+                        r = requests.get(url, stream=True, timeout=20)
+                        r.raise_for_status()
+                        with open(cand_path, "wb") as f:
+                            for chunk in r.iter_content(chunk_size=8192):
+                                f.write(chunk)
+                        cutaway_path = str(cand_path)
+                        break
+                    except Exception as exc:
+                        logger.warning("Failed to download cutaway %s: %s", url, exc)
+                
+                if cutaway_path:
+                    s_cutaway = scene.copy()
+                    s_cutaway["start_time"] = punch_time
+                    s_cutaway["end_time"] = punch_time + cutaway_duration
+                    s_cutaway["video_path"] = cutaway_path
+                    new_scenes.append(s_cutaway)
+                    current_start = punch_time + cutaway_duration
+                else:
+                    current_start = punch_time
+                    
+            if current_start < scene_end:
+                s_end = scene.copy()
+                s_end["start_time"] = current_start
+                s_end["end_time"] = scene_end
+                new_scenes.append(s_end)
+                
+        # Inject secondary zoom flashes as local offsets
+        for scene in new_scenes:
+            st = scene["start_time"]
+            et = scene["end_time"]
+            flashes = []
+            for p in secondary_punches:
+                if st <= p["timestamp"] < et:
+                    flashes.append(p["timestamp"] - st)
+            if flashes:
+                scene["zoom_flash_at"] = flashes
+                
+        return new_scenes
 
     def _extract_frame_base64(self, file_path: str) -> str:
         from PIL import Image
@@ -218,19 +243,22 @@ class VisualDirectorAgent:
         logger.info("[VisualDirector] Aligning timings for %d scenes.", len(scenes))
         aligned_scenes = self._align_timings(scenes, words)
         
+        from src.services.stock_search import search_pexels, search_pixabay, search_unsplash
+        
         final_scenes = []
         for scene in aligned_scenes:
             query = scene.get('search_query', '')
             logger.info("[VisualDirector] Processing Scene %d: '%s'", scene.get('scene_number', 0), query)
             
             urls = []
-            urls.extend(self._search_pexels(query))
-            urls.extend(self._search_pixabay(query))
-            urls.extend(self._search_unsplash(query))
+            urls.extend(search_pexels(query, api_key=self.pexels_api_key))
+            urls.extend(search_pixabay(query, api_key=self.pixabay_api_key))
+            urls.extend(search_unsplash(query, api_key=self.unsplash_api_key))
             
             fresh_urls = [u for u in urls if u not in self.history]
             used_urls = [u for u in urls if u in self.history]
-            urls_to_check = (fresh_urls + used_urls)[:5]
+            max_cands = self.config.get("visual_sources", {}).get("vision_scoring", {}).get("max_candidates_scored_per_scene", 2)
+            urls_to_check = (fresh_urls + used_urls)[:max_cands]
             
             best_file_path = None
             best_score = -1.0

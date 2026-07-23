@@ -89,7 +89,7 @@ def run_pipeline(
 
         # ── Phase 5: Visual Planning ───────────────────────────────
         from src.agents.visual_planner_agent import VisualPlannerAgent
-        shot_list = VisualPlannerAgent(llm_client).plan_visuals(script_text)
+        shot_list = VisualPlannerAgent(llm_client).plan_visuals(script_text, channel_config)
         logger.info("[Pipeline] Phase 5 (Visual Planner) complete. %d scenes planned.", len(shot_list))
 
         # ── Phase 6: Captions ──────────────────────────────────────
@@ -99,7 +99,14 @@ def run_pipeline(
 
         # ── Phase 5.5: Visual Direction ──────────────────────────────
         from src.agents.visual_director_agent import VisualDirectorAgent
-        final_scenes = VisualDirectorAgent(llm_client, channel_config).select_visuals(shot_list, words_timing)
+        visual_director = VisualDirectorAgent(llm_client, channel_config)
+        final_scenes = visual_director.select_visuals(shot_list, words_timing)
+        
+        # ── Phase 5.6: Punch-Editing System ────────────────────────
+        from src.agents.punch_agent import PunchAgent
+        punch_moments = PunchAgent().identify_punch_moments(script_text, words_timing, channel_config)
+        if punch_moments:
+            final_scenes = visual_director.insert_punch_cutaways(final_scenes, punch_moments, channel_config)
         # We can store the JSON of the final scenes into the DB if we had a column, but we just pass it along
         video.status = "visuals_directed"
         db_session.commit()

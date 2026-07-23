@@ -27,13 +27,28 @@ video:
   min_duration_seconds: 50
   caption_style: "bold_bottom_center"
   caption_animation: "word_by_word_reveal"
+  scene_target_seconds: 2.5
 
 visual_sources:
   apis: ["pexels", "pixabay", "unsplash"]
   vision_scoring:
     enabled: true
-    max_candidates_scored_per_scene: 3
+    max_candidates_scored_per_scene: 2
     fallback_if_no_good_match: "kinetic_text_card"
+
+editing:
+  ken_burns:
+    vary_per_scene: true
+    effects: ["zoom_in", "zoom_out", "pan_left", "pan_right"]
+    zoom_range: [0.08, 0.15]
+  punch:
+    enabled: true
+    trigger_words: ["never", "shocking", "secret", "banned", "always", "nobody", "everyone", "million", "billion", "percent"]
+    max_punch_moments: 6
+    primary_punch_count: 3
+    primary_cutaway_duration_seconds: 0.5
+    secondary_zoom_flash_scale: 1.18
+    secondary_zoom_flash_duration_seconds: 0.25
 
 quota:
   youtube_daily_unit_budget: 8000
