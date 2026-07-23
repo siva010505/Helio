@@ -2,14 +2,16 @@ name: Helio Daily Pipeline
 
 on:
   schedule:
-    # Run at 07:30 UTC (1:00 PM IST)
-    - cron: '30 7 * * *'
+    # 11:40 UTC = 5:10 PM IST
+    - cron: '40 11 * * *'
+    # 20:00 UTC = 1:30 AM IST
+    - cron: '0 20 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
         description: 'Run as a dry-run (no upload)'
         type: boolean
-        default: true
+        default: false
 
 permissions:
   contents: write  # Required to commit the agent.db back to the repo
@@ -75,14 +77,6 @@ jobs:
           else
             python scripts/run_daily_pipeline.py
           fi
-
-      - name: Upload Generated Videos
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: generated-videos
-          path: data/cache/
-          retention-days: 3
 
       - name: Commit Database State
         if: always() # Run this even if the pipeline fails, to track partial state
