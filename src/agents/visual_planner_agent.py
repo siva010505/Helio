@@ -69,7 +69,7 @@ class VisualPlannerAgent:
         if channel_config:
             target_seconds = channel_config.get("video", {}).get("scene_target_seconds", 2.5)
             
-        system_prompt = VISUAL_PLANNER_PROMPT.format(scene_target_seconds=target_seconds)
+        system_prompt = VISUAL_PLANNER_PROMPT.replace("{scene_target_seconds}", str(target_seconds))
 
         max_attempts = 2
         for attempt in range(1, max_attempts + 1):
