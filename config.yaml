@@ -58,6 +58,6 @@ learning:
   metrics_pulled: ["views", "likes", "comments", "average_view_duration", "average_view_percentage"]
 
 youtube:
-  client_secret_file: "../shared/client_secret.json"
-  token_file: "../shared/token.pickle"
+  client_secret_file: "client_secret.json"
+  token_file: "token.pickle"
   shared_long_form_pointer_path: "../shared/latest_long_form.json"
