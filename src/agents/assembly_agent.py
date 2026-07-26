@@ -184,8 +184,7 @@ class AssemblyAgent:
                     clip = ImageClip(path).with_duration(duration)
                     clip = self._apply_ken_burns(clip, duration, secondary_flashes=flashes)
                 else:
-                    clip = VideoFileClip(path)
-                    clip = clip.without_audio() # Priority 1: Strip audio
+                    clip = VideoFileClip(path, audio=False)
                     clip = self._resize_and_crop(clip, self.resolution)
                     
                     if clip.duration < duration:
