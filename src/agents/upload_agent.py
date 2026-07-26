@@ -27,7 +27,7 @@ class UploadAgent:
         self.config = config
         self.db = db_session
         self.credentials_file = self.config.get("youtube", {}).get("client_secret_file", "client_secret.json")
-        self.token_file = "token.pickle"
+        self.token_file = self.config.get("youtube", {}).get("token_file", "token.pickle")
         
         # Load quota settings
         # Note: if config is passed as channel_config, we need to access the root config
@@ -114,6 +114,22 @@ class UploadAgent:
             except Exception as e:
                 logger.warning("[UploadAgent] Failed to parse publish_time_str '%s', uploading immediately as private: %s", publish_time_str, e)
 
+        youtube_config = self.config.get("youtube", {})
+        pointer_path = youtube_config.get("shared_long_form_pointer_path")
+        
+        long_form_url = None
+        if pointer_path and os.path.exists(pointer_path):
+            try:
+                import json
+                with open(pointer_path, 'r') as f:
+                    data = json.load(f)
+                    if "url" in data:
+                        long_form_url = data["url"]
+                        description += f"\n\n🎥 Watch the full story: {long_form_url}"
+                        logger.info("[UploadAgent] Appended long-form CTA to description.")
+            except Exception as e:
+                logger.info("[UploadAgent] Could not read long-form pointer file %s: %s", pointer_path, e)
+
         body = {
             'snippet': {
                 'title': title[:100],
@@ -162,5 +178,25 @@ class UploadAgent:
 
         video_id = response.get('id')
         logger.info("[UploadAgent] Video uploaded successfully! Video ID: %s", video_id)
+
+        if long_form_url:
+            try:
+                comment_text = f"🎥 Watch the full story: {long_form_url}"
+                youtube.commentThreads().insert(
+                    part="snippet",
+                    body={
+                        "snippet": {
+                            "videoId": video_id,
+                            "topLevelComment": {
+                                "snippet": {
+                                    "textOriginal": comment_text
+                                }
+                            }
+                        }
+                    }
+                ).execute()
+                logger.info("[UploadAgent] Cross-promotion comment posted successfully.")
+            except Exception as e:
+                logger.error("[UploadAgent] Failed to post cross-promotion comment: %s", e)
 
         return video_id
