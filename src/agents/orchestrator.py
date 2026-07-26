@@ -72,6 +72,21 @@ class OrchestratorAgent:
 
         summary = {"channels": [], "dry_run": dry_run}
 
+        # ── Phase 1: Analytics & Feedback Loop ────────────────────────────
+        logger.info("[Orchestrator] Running Phase 1: Analytics & Evaluation pipeline...")
+        from src.agents.analytics_agent import AnalyticsAgent
+        from src.agents.evaluation_agent import EvaluationAgent
+        
+        try:
+            analytics_agent = AnalyticsAgent(self.config, self.db)
+            analytics_agent.pull_metrics()
+            
+            if self.llm:
+                evaluation_agent = EvaluationAgent(self.llm, self.db, self.config)
+                evaluation_agent.run_evaluation()
+        except Exception as exc:
+            logger.error("[Orchestrator] Analytics/Evaluation loop failed: %s. Proceeding with existing rules.", exc)
+
         try:
             for ch_cfg in self.config.get("channels", []):
                 ch_summary = self._run_channel(ch_cfg, dry_run=dry_run)
