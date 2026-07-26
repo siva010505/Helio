@@ -165,18 +165,22 @@ class AssemblyAgent:
         return VideoClip(lambda t: crop_func(zoomed_clip.get_frame, t), duration=duration)
 
     def assemble_video(self, final_scenes: List[Dict], words_timing: List[Dict], voice_path: str, video_id: int) -> str:
-        from moviepy import VideoFileClip, ImageClip, AudioFileClip, TextClip, CompositeVideoClip, CompositeAudioClip, concatenate_videoclips
+        from moviepy import VideoFileClip, ImageClip, AudioFileClip, TextClip, CompositeVideoClip, CompositeAudioClip
         from moviepy.video.fx.Loop import Loop
+        import subprocess
+        from imageio_ffmpeg import get_ffmpeg_exe
         
-        logger.info("[AssemblyAgent] Starting video assembly for video %s", video_id)
+        logger.info("[AssemblyAgent] Starting chunked video assembly for video %s", video_id)
         
-        scene_clips = []
-        for scene in final_scenes:
+        temp_scene_paths = []
+        
+        for i, scene in enumerate(final_scenes):
             duration = scene["end_time"] - scene["start_time"]
             if duration <= 0:
                 continue
                 
             flashes = scene.get("zoom_flash_at", [])
+            temp_path = self.cache_dir / f"chunk_{video_id}_{i}.mp4"
                 
             try:
                 path = scene["video_path"]
@@ -194,15 +198,46 @@ class AssemblyAgent:
                         
                     clip = self._apply_zoom_flashes(clip, duration, flashes)
                     
-                scene_clips.append(clip)
+                # Export chunk to disk to free memory
+                clip.write_videofile(str(temp_path), fps=24, codec="libx264", preset="ultrafast", audio=False, logger=None)
+                clip.close()
+                temp_scene_paths.append(temp_path)
             except Exception as exc:
                 logger.error("Failed to process clip for scene %s: %s", scene.get("scene_number"), exc)
                 from moviepy import ColorClip
                 fallback = ColorClip(size=self.resolution, color=(0,0,0), duration=duration)
-                scene_clips.append(fallback)
+                fallback.write_videofile(str(temp_path), fps=24, codec="libx264", preset="ultrafast", audio=False, logger=None)
+                fallback.close()
+                temp_scene_paths.append(temp_path)
                 
-        logger.info("[AssemblyAgent] Concatenating %d scenes.", len(scene_clips))
-        main_video = concatenate_videoclips(scene_clips, method="compose")
+        logger.info("[AssemblyAgent] Concatenating %d chunks via FFmpeg.", len(temp_scene_paths))
+        concat_txt_path = self.cache_dir / f"concat_{video_id}.txt"
+        with open(concat_txt_path, "w") as f:
+            for p in temp_scene_paths:
+                f.write(f"file '{p.name}'\n")
+                
+        merged_bg_path = self.cache_dir / f"merged_bg_{video_id}.mp4"
+        
+        ffmpeg_cmd = [
+            get_ffmpeg_exe(), "-y", "-f", "concat", "-safe", "0",
+            "-i", str(concat_txt_path),
+            "-c", "copy", str(merged_bg_path)
+        ]
+        
+        subprocess.run(ffmpeg_cmd, cwd=str(self.cache_dir), check=True)
+        
+        # Clean up chunks
+        for p in temp_scene_paths:
+            try:
+                os.remove(p)
+            except:
+                pass
+        try:
+            os.remove(concat_txt_path)
+        except:
+            pass
+            
+        main_video = VideoFileClip(str(merged_bg_path), audio=False)
         
         logger.info("[AssemblyAgent] Adding voice audio from %s", voice_path)
         voice_clip = AudioFileClip(voice_path)
