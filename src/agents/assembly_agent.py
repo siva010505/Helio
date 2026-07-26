@@ -220,8 +220,8 @@ class AssemblyAgent:
         
         ffmpeg_cmd = [
             get_ffmpeg_exe(), "-y", "-f", "concat", "-safe", "0",
-            "-i", str(concat_txt_path),
-            "-c", "copy", str(merged_bg_path)
+            "-i", concat_txt_path.name,
+            "-c", "copy", merged_bg_path.name
         ]
         
         subprocess.run(ffmpeg_cmd, cwd=str(self.cache_dir), check=True)
