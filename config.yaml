@@ -2,7 +2,7 @@ channels:
   - name: "psychology_shorts"
     niche: "Psychology & human behavior (narrative format)"
     videos_per_day: 1
-    target_length_seconds: 75
+    target_length_seconds: 40
     tone: "mysterious, narrative, intriguing, hook in first 2 seconds"
     voice: "piper:en_US-ryan-high"
     hashtags_base: ["#Psychology", "#HumanBehavior", "#Shorts"]
@@ -22,8 +22,8 @@ llm:
 
 video:
   resolution: "1080x1920"
-  max_duration_seconds: 60
-  min_duration_seconds: 50
+  max_duration_seconds: 45
+  min_duration_seconds: 30
   caption_style: "bold_bottom_center"
   caption_animation: "word_by_word_reveal"
   scene_target_seconds: 1.5
