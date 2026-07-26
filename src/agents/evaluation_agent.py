@@ -32,10 +32,15 @@ You will receive a dataset of YouTube Shorts performance records.
 Each record contains:
   - topic_text: the subject of the video
   - hook_style: the opening hook type (question/stat/story/bold_claim)
+  - upload_day: day of the week it was posted
   - views, ctr (click-through rate), average_view_duration, average_view_percentage
 
+CRITICAL INSTRUCTION:
+Raw view counts are heavily influenced by the YouTube algorithm, luck, and upload timing. 
+You MUST prioritize Average View Percentage (Retention) and Average View Duration as the true indicators of script quality. A video with low views but 90%+ retention is a massive success. Look for consistent patterns across the cohort rather than isolated hits.
+
 Your job:
-1. Identify the top 2-3 patterns that explain HIGH performance (high CTR, high AVD).
+1. Identify the top 2-3 patterns that explain HIGH performance (High Retention, High AVD).
 2. Identify the top 2-3 patterns that explain LOW performance.
 3. For each of the following agents, output a concrete, actionable instruction update
    (a SHORT paragraph) that will improve future video performance:
@@ -89,6 +94,7 @@ class EvaluationAgent:
                 "video_id": video.id,
                 "topic_text": video.title or "unknown",
                 "hook_style": video.hook_style or "unknown",
+                "upload_day": video.upload_time.strftime("%A") if video.upload_time else "unknown",
                 "views": metric.views,
                 "ctr": metric.ctr,
                 "average_view_duration": metric.average_view_duration,
@@ -152,15 +158,36 @@ class EvaluationAgent:
         metrics_data = self._load_mature_metrics()
 
         min_records = self.config.get("learning", {}).get("min_videos_before_adjusting", 5)
+        record_count = len(metrics_data)
 
-        if len(metrics_data) < min_records:
+        if record_count < min_records:
             logger.info(
                 "[EvaluationAgent] Insufficient data (%d records). "
                 "Need at least %d mature metrics. Skipping.",
-                len(metrics_data),
+                record_count,
                 min_records,
             )
             return {"status": "skipped", "reason": "insufficient_data"}
+            
+        current_epoch = record_count // min_records
+        
+        # Check if we already evaluated this epoch for any channel/agent.
+        latest_pv = self.db.query(PromptVersion).order_by(PromptVersion.version_number.desc()).first()
+        last_epoch = 0
+        if latest_pv and latest_pv.performance_summary_json:
+            try:
+                summary_data = json.loads(latest_pv.performance_summary_json)
+                last_epoch = summary_data.get("epoch", 0)
+            except:
+                pass
+                
+        if current_epoch <= last_epoch:
+            logger.info(
+                "[EvaluationAgent] Current epoch (%d) has already been evaluated (last_epoch=%d). "
+                "Waiting for more mature videos before re-evaluating. Skipping.",
+                current_epoch, last_epoch
+            )
+            return {"status": "skipped", "reason": "epoch_already_evaluated"}
 
         # Compose the analysis prompt
         user_prompt = (
@@ -186,7 +213,11 @@ class EvaluationAgent:
 
         # Extract agent-specific updates and persist as new PromptVersions
         agent_updates = analysis.get("agent_updates", {})
-        performance_summary = {"summary": analysis.get("summary"), "record_count": len(metrics_data)}
+        performance_summary = {
+            "summary": analysis.get("summary"), 
+            "record_count": record_count,
+            "epoch": current_epoch
+        }
 
         # Apply to every configured channel
         channels = self.config.get("channels", [])
