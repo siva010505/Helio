@@ -78,7 +78,7 @@ class VisualPlannerAgent:
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     temperature=0.7,
-                    max_tokens=1500
+                    max_tokens=4000
                 )
                 
                 # If the LLM returned a dict with a key instead of a list, extract it.
