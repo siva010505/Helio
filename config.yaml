@@ -26,7 +26,7 @@ video:
   min_duration_seconds: 50
   caption_style: "bold_bottom_center"
   caption_animation: "word_by_word_reveal"
-  scene_target_seconds: 2.5
+  scene_target_seconds: 1.5
 
 visual_sources:
   apis: ["pexels", "pixabay", "unsplash"]
@@ -54,5 +54,5 @@ quota:
   upload_cost_units: 1600
 
 learning:
-  min_videos_before_adjusting: 5
+  min_videos_before_adjusting: 20
   metrics_pulled: ["views", "likes", "comments", "average_view_duration", "average_view_percentage"]

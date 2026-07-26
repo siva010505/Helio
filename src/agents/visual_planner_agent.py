@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 VISUAL_PLANNER_PROMPT = """\
 You are an expert video director for YouTube Shorts. Your job is to break down the provided script into distinct visual scenes.
-Based on the natural speaking pace, aim for each scene to average around {scene_target_seconds} seconds in length.
+Based on the natural speaking pace, aim for each scene to be between 1 and 3 seconds (averaging {scene_target_seconds} seconds). This fast pacing is crucial for viewer engagement.
 
 For each scene, provide:
 - "scene_number": The sequential number (1, 2, 3...)
