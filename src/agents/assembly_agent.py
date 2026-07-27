@@ -267,33 +267,85 @@ class AssemblyAgent:
         final_audio = CompositeAudioClip(audio_clips)
         main_video = main_video.with_audio(final_audio)
         
-        logger.info("[AssemblyAgent] Generating caption overlays...")
+        logger.info("[AssemblyAgent] Generating Karaoke accumulator captions...")
         caption_clips = []
         
+        # 1. Group words into chunks (sentences or max 4 words)
+        CHUNK_SIZE = 4
+        chunks = []
+        current_chunk = []
         for word in words_timing:
             w_text = word["word"].strip()
             if not w_text:
                 continue
+            word["clean_text"] = w_text
+            current_chunk.append(word)
+            
+            # Break on punctuation or max size
+            if len(current_chunk) >= CHUNK_SIZE or w_text.endswith(('.', '!', '?', ',')):
+                chunks.append(current_chunk)
+                current_chunk = []
+        if current_chunk:
+            chunks.append(current_chunk)
+            
+        # Helper to get width of a space for padding between words
+        try:
+            space_clip = TextClip(text="A", font=self.font, font_size=70)
+            space_width = space_clip.size[0] * 0.45
+            space_clip.close()
+        except:
+            space_width = 30
+            
+        y_pos = 1400
+        
+        for chunk in chunks:
+            if not chunk: continue
+            
+            chunk_end = chunk[-1]["end"]
+            
+            # Calculate total width of this chunk to perfectly center it
+            total_w = 0
+            for w in chunk:
+                try:
+                    dummy = TextClip(text=w["clean_text"], font=self.font, font_size=70, stroke_width=3)
+                    w["width"] = dummy.size[0]
+                    dummy.close()
+                except:
+                    w["width"] = 150
+                total_w += w["width"]
                 
-            try:
-                txt_clip = TextClip(
-                    text=w_text,
-                    font=self.font,
-                    font_size=80,
-                    color=self.accent_color,
-                    stroke_color="black",
-                    stroke_width=3,
-                    method="caption",
-                    size=(self.resolution[0] - 100, 250),
-                    text_align="center"
-                )
+            total_w += space_width * (len(chunk) - 1)
+            
+            # Starting X position
+            current_x = (self.resolution[0] - total_w) / 2
+            
+            for w in chunk:
+                text = w["clean_text"]
+                start_t = w["start"]
+                end_t = w["end"]
                 
-                txt_clip = txt_clip.with_position(("center", 1400))
-                txt_clip = txt_clip.with_start(word["start"]).with_end(word["end"])
-                
-                caption_clips.append(txt_clip)
-            except Exception as exc:
-                logger.warning("Failed to create caption for word '%s': %s", w_text, exc)
+                try:
+                    # 1. Active Word (Yellow)
+                    active_clip = TextClip(
+                        text=text, font=self.font, font_size=70, 
+                        color=self.accent_color, stroke_color="black", stroke_width=3
+                    )
+                    active_clip = active_clip.with_position((current_x, y_pos)).with_start(start_t).with_end(end_t)
+                    caption_clips.append(active_clip)
+                    
+                    # 2. Past Word (White)
+                    if end_t < chunk_end:
+                        past_clip = TextClip(
+                            text=text, font=self.font, font_size=70, 
+                            color="white", stroke_color="black", stroke_width=3
+                        )
+                        past_clip = past_clip.with_position((current_x, y_pos)).with_start(end_t).with_end(chunk_end)
+                        caption_clips.append(past_clip)
+                        
+                except Exception as exc:
+                    logger.warning("Failed to create caption for word '%s': %s", text, exc)
+                    
+                current_x += w["width"] + space_width
 
         if caption_clips:
             logger.info("[AssemblyAgent] Compositing %d caption clips.", len(caption_clips))
