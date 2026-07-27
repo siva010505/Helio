@@ -267,8 +267,12 @@ class AssemblyAgent:
         final_audio = CompositeAudioClip(audio_clips)
         main_video = main_video.with_audio(final_audio)
         
-        logger.info("[AssemblyAgent] Generating Karaoke accumulator captions...")
+        logger.info("[AssemblyAgent] Generating Karaoke accumulator captions using PIL...")
         caption_clips = []
+        
+        import numpy as np
+        from PIL import Image, ImageDraw, ImageFont
+        from moviepy import ImageClip
         
         # 1. Group words into chunks (sentences or max 6 words)
         CHUNK_SIZE = 6
@@ -288,33 +292,36 @@ class AssemblyAgent:
         if current_chunk:
             chunks.append(current_chunk)
             
-        # Helper to get width of a space for padding between words
         try:
-            space_clip = TextClip(text="A", font=self.font, font_size=70)
-            space_width = space_clip.size[0] * 0.45
-            space_clip.close()
+            pil_font = ImageFont.truetype(self.font, 70)
         except:
+            pil_font = ImageFont.load_default()
+            
+        # Helper to get text width in Pillow
+        def get_text_width(text, font):
+            if hasattr(font, 'getbbox'):
+                return font.getbbox(text)[2] - font.getbbox(text)[0]
+            elif hasattr(font, 'getlength'):
+                return int(font.getlength(text))
+            else:
+                return font.getsize(text)[0]
+                
+        space_width = get_text_width(" ", pil_font)
+        if space_width < 10:
             space_width = 30
             
         MAX_LINE_WIDTH = 900
         LINE_HEIGHT = 90
         base_y_pos = 1400
+        W, H = self.resolution
         
         for chunk in chunks:
             if not chunk: continue
             
-            chunk_end = chunk[-1]["end"]
-            
-            # Pre-calculate widths
+            # Pre-calculate widths and lines for the whole chunk
             for w in chunk:
-                try:
-                    dummy = TextClip(text=w["clean_text"], font=self.font, font_size=70, stroke_width=3)
-                    w["width"] = dummy.size[0]
-                    dummy.close()
-                except:
-                    w["width"] = 150
-            
-            # Word-Wrapping Algorithm
+                w["width"] = get_text_width(w["clean_text"], pil_font)
+                
             lines = []
             current_line = []
             current_line_width = 0
@@ -331,46 +338,65 @@ class AssemblyAgent:
                         lines.append({"words": current_line, "width": current_line_width})
                         current_line = [w]
                         current_line_width = w["width"]
-            
+                        
             if current_line:
                 lines.append({"words": current_line, "width": current_line_width})
                 
-            # Vertical Centering of the block
             total_height = len(lines) * LINE_HEIGHT
             start_y = base_y_pos - (total_height / 2)
             
-            for line_idx, line in enumerate(lines):
-                line_y = start_y + (line_idx * LINE_HEIGHT)
-                # Horizontal Centering of this specific line
-                current_x = (self.resolution[0] - line["width"]) / 2
-                
-                for w in line["words"]:
-                    text = w["clean_text"]
-                    start_t = w["start"]
-                    end_t = w["end"]
+            # Generate a sequence of ImageClips for this chunk
+            for i in range(len(chunk)):
+                # This frame is active from chunk[i]["start"] to chunk[i+1]["start"] (or end of chunk)
+                start_t = chunk[i]["start"]
+                if i < len(chunk) - 1:
+                    end_t = chunk[i+1]["start"]
+                else:
+                    end_t = chunk[i]["end"]
                     
-                    try:
-                        # 1. Active Word (Yellow)
-                        active_clip = TextClip(
-                            text=text, font=self.font, font_size=70, 
-                            color=self.accent_color, stroke_color="black", stroke_width=3
-                        )
-                        active_clip = active_clip.with_position((current_x, line_y)).with_start(start_t).with_end(end_t)
-                        caption_clips.append(active_clip)
-                        
-                        # 2. Past Word (White)
-                        if end_t < chunk_end:
-                            past_clip = TextClip(
-                                text=text, font=self.font, font_size=70, 
-                                color="white", stroke_color="black", stroke_width=3
-                            )
-                            past_clip = past_clip.with_position((current_x, line_y)).with_start(end_t).with_end(chunk_end)
-                            caption_clips.append(past_clip)
+                if end_t <= start_t:
+                    continue
+                    
+                # Create transparent PIL Image
+                img = Image.new('RGBA', (W, H), (0,0,0,0))
+                draw = ImageDraw.Draw(img)
+                
+                # Draw only the words that have been spoken so far (Accumulator Reveal)
+                global_w_idx = 0
+                for line_idx, line in enumerate(lines):
+                    line_y = start_y + (line_idx * LINE_HEIGHT)
+                    current_x = (W - line["width"]) / 2
+                    
+                    for w in line["words"]:
+                        if global_w_idx > i:
+                            global_w_idx += 1
+                            current_x += w["width"] + space_width
+                            continue
                             
-                    except Exception as exc:
-                        logger.warning("Failed to create caption for word '%s': %s", text, exc)
+                        # Active word is Yellow, previously spoken words are White
+                        color = self.accent_color if global_w_idx == i else "white"
                         
-                    current_x += w["width"] + space_width
+                        try:
+                            # Pillow >= 10.0 supports stroke
+                            draw.text((current_x, line_y), w["clean_text"], font=pil_font, fill=color, stroke_width=4, stroke_fill="black")
+                        except TypeError:
+                            # Fallback for old Pillow without stroke support
+                            stroke_width = 4
+                            for dx in [-stroke_width, 0, stroke_width]:
+                                for dy in [-stroke_width, 0, stroke_width]:
+                                    if dx == 0 and dy == 0: continue
+                                    draw.text((current_x + dx, line_y + dy), w["clean_text"], font=pil_font, fill="black")
+                            draw.text((current_x, line_y), w["clean_text"], font=pil_font, fill=color)
+                            
+                        current_x += w["width"] + space_width
+                        global_w_idx += 1
+                        
+                frame_array = np.array(img)
+                try:
+                    clip = ImageClip(frame_array).with_start(start_t).with_end(end_t)
+                    caption_clips.append(clip)
+                except Exception as exc:
+                    logger.warning("Failed to create ImageClip for word: %s", exc)
 
         if caption_clips:
             logger.info("[AssemblyAgent] Compositing %d caption clips.", len(caption_clips))

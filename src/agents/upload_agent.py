@@ -98,7 +98,7 @@ class UploadAgent:
         youtube = build('youtube', 'v3', credentials=creds)
 
         status_dict = {
-            'privacyStatus': 'private' if publish_time_str else 'public',  # Must be private for publishAt, otherwise public
+            'privacyStatus': 'private',
             'selfDeclaredMadeForKids': False, 
         }
 
