@@ -435,45 +435,91 @@ class AssemblyAgent:
         # --- Custom PIL Thumbnail Baking ---
         from moviepy import ImageClip, concatenate_videoclips
         import numpy as np
+        from PIL import Image, ImageDraw, ImageFont, ImageEnhance
         
         logger.info("[AssemblyAgent] Generating cinematic custom thumbnail...")
         W, H = self.resolution
-        # Use upper() for cinematic documentary feel
-        title_text = metadata.get("title", "UNTITLED").upper()
+        title_text = metadata.get("title", "UNTITLED")
         
-        from PIL import Image, ImageDraw, ImageFont
-        img = Image.new('RGB', (W, H), (10, 10, 10))
+        # Split text into Setup (line 1) and Hook (line 2)
+        words = title_text.split()
+        if len(words) > 1:
+            line1_text = " ".join(words[:-1]).lower()
+            line2_text = words[-1].upper()
+        else:
+            line1_text = ""
+            line2_text = title_text.upper()
+            
+        try:
+            # Grab a frame from the middle of the first 2 seconds to use as a background
+            bg_frame = main_video.get_frame(1.0)
+            img = Image.fromarray(bg_frame).convert('RGB')
+            # Darken the background slightly so text pops
+            enhancer = ImageEnhance.Brightness(img)
+            img = enhancer.enhance(0.7)
+        except Exception as e:
+            logger.warning("[AssemblyAgent] Failed to grab background frame, using dark grey: %s", e)
+            img = Image.new('RGB', (W, H), (20, 20, 20))
+            
         draw = ImageDraw.Draw(img)
         
         try:
-            # Use same font as captions but much larger
-            font = ImageFont.truetype(self.font, 120)
+            font1 = ImageFont.truetype(self.font, 110)
+            font2 = ImageFont.truetype(self.font, 160)
         except:
-            font = ImageFont.load_default()
+            font1 = ImageFont.load_default()
+            font2 = ImageFont.load_default()
             
-        center_x = W / 2
-        center_y = H / 2
-        padding_x = 100
-        padding_y = 60
+        def get_bbox(text, font):
+            if hasattr(draw, 'textbbox'):
+                return draw.textbbox((0, 0), text, font=font)
+            else:
+                try:
+                    w, h = font.getsize(text)
+                    return (0, 0, w, h)
+                except:
+                    return (0, 0, 100, 100)
+                    
+        bbox1 = get_bbox(line1_text, font1)
+        w1, h1 = bbox1[2] - bbox1[0], bbox1[3] - bbox1[1]
+        
+        bbox2 = get_bbox(line2_text, font2)
+        w2, h2 = bbox2[2] - bbox2[0], bbox2[3] - bbox2[1]
+        
+        spacing = 30
+        padding_x = 60
+        padding_y = 30
+        
+        box_w = w2 + padding_x * 2
+        box_h = h2 + padding_y * 2
+        
+        total_h = h1 + spacing + box_h if line1_text else box_h
+        start_y = (H - total_h) / 2
+        
+        if line1_text:
+            x1 = (W - w1) / 2
+            y1 = start_y
+            stroke_w = 6
+            for dx in [-stroke_w, 0, stroke_w]:
+                for dy in [-stroke_w, 0, stroke_w]:
+                    if dx == 0 and dy == 0: continue
+                    draw.text((x1+dx, y1+dy), line1_text, font=font1, fill="black")
+            draw.text((x1, y1), line1_text, font=font1, fill="white")
+            start_y += h1 + spacing
+            
+        x2 = (W - box_w) / 2
+        y2 = start_y
+        
+        shadow_offset = 20
+        draw.rectangle([x2 + shadow_offset, y2 + shadow_offset, x2 + box_w + shadow_offset, y2 + box_h + shadow_offset], fill=(0, 0, 0))
+        draw.rectangle([x2, y2, x2 + box_w, y2 + box_h], fill=(220, 0, 0))
         
         if hasattr(draw, 'textbbox'):
-            bbox = draw.textbbox((center_x, center_y), title_text, font=font, anchor="mm")
-            box_x1 = bbox[0] - padding_x
-            box_y1 = bbox[1] - padding_y
-            box_x2 = bbox[2] + padding_x
-            box_y2 = bbox[3] + padding_y
-            
-            draw.rectangle([box_x1, box_y1, box_x2, box_y2], fill=(200, 0, 0))
-            draw.text((center_x, center_y), title_text, font=font, fill="white", anchor="mm")
+            center_box_x = x2 + box_w / 2
+            center_box_y = y2 + box_h / 2
+            draw.text((center_box_x, center_box_y), line2_text, font=font2, fill="white", anchor="mm")
         else:
-            text_w = font.getsize(title_text)[0]
-            text_h = font.getsize(title_text)[1]
-            box_w = text_w + padding_x * 2
-            box_h = text_h + padding_y * 2
-            box_x1 = (W - box_w) / 2
-            box_y1 = (H - box_h) / 2
-            draw.rectangle([box_x1, box_y1, box_x1 + box_w, box_y1 + box_h], fill=(200, 0, 0))
-            draw.text((box_x1 + padding_x, box_y1 + padding_y), title_text, font=font, fill="white")
+            draw.text((x2 + padding_x, y2 + padding_y), line2_text, font=font2, fill="white")
             
         thumb_array = np.array(img)
         thumb_clip = ImageClip(thumb_array).with_duration(0.5)
