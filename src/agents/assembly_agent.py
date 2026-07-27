@@ -270,8 +270,8 @@ class AssemblyAgent:
         logger.info("[AssemblyAgent] Generating Karaoke accumulator captions...")
         caption_clips = []
         
-        # 1. Group words into chunks (sentences or max 4 words)
-        CHUNK_SIZE = 4
+        # 1. Group words into chunks (sentences or max 10 words)
+        CHUNK_SIZE = 10
         chunks = []
         current_chunk = []
         for word in words_timing:
@@ -296,15 +296,16 @@ class AssemblyAgent:
         except:
             space_width = 30
             
-        y_pos = 1400
+        MAX_LINE_WIDTH = 900
+        LINE_HEIGHT = 90
+        base_y_pos = 1400
         
         for chunk in chunks:
             if not chunk: continue
             
             chunk_end = chunk[-1]["end"]
             
-            # Calculate total width of this chunk to perfectly center it
-            total_w = 0
+            # Pre-calculate widths
             for w in chunk:
                 try:
                     dummy = TextClip(text=w["clean_text"], font=self.font, font_size=70, stroke_width=3)
@@ -312,40 +313,64 @@ class AssemblyAgent:
                     dummy.close()
                 except:
                     w["width"] = 150
-                total_w += w["width"]
-                
-            total_w += space_width * (len(chunk) - 1)
             
-            # Starting X position
-            current_x = (self.resolution[0] - total_w) / 2
+            # Word-Wrapping Algorithm
+            lines = []
+            current_line = []
+            current_line_width = 0
             
             for w in chunk:
-                text = w["clean_text"]
-                start_t = w["start"]
-                end_t = w["end"]
+                if not current_line:
+                    current_line.append(w)
+                    current_line_width = w["width"]
+                else:
+                    if current_line_width + space_width + w["width"] <= MAX_LINE_WIDTH:
+                        current_line.append(w)
+                        current_line_width += space_width + w["width"]
+                    else:
+                        lines.append({"words": current_line, "width": current_line_width})
+                        current_line = [w]
+                        current_line_width = w["width"]
+            
+            if current_line:
+                lines.append({"words": current_line, "width": current_line_width})
                 
-                try:
-                    # 1. Active Word (Yellow)
-                    active_clip = TextClip(
-                        text=text, font=self.font, font_size=70, 
-                        color=self.accent_color, stroke_color="black", stroke_width=3
-                    )
-                    active_clip = active_clip.with_position((current_x, y_pos)).with_start(start_t).with_end(end_t)
-                    caption_clips.append(active_clip)
+            # Vertical Centering of the block
+            total_height = len(lines) * LINE_HEIGHT
+            start_y = base_y_pos - (total_height / 2)
+            
+            for line_idx, line in enumerate(lines):
+                line_y = start_y + (line_idx * LINE_HEIGHT)
+                # Horizontal Centering of this specific line
+                current_x = (self.resolution[0] - line["width"]) / 2
+                
+                for w in line["words"]:
+                    text = w["clean_text"]
+                    start_t = w["start"]
+                    end_t = w["end"]
                     
-                    # 2. Past Word (White)
-                    if end_t < chunk_end:
-                        past_clip = TextClip(
+                    try:
+                        # 1. Active Word (Yellow)
+                        active_clip = TextClip(
                             text=text, font=self.font, font_size=70, 
-                            color="white", stroke_color="black", stroke_width=3
+                            color=self.accent_color, stroke_color="black", stroke_width=3
                         )
-                        past_clip = past_clip.with_position((current_x, y_pos)).with_start(end_t).with_end(chunk_end)
-                        caption_clips.append(past_clip)
+                        active_clip = active_clip.with_position((current_x, line_y)).with_start(start_t).with_end(end_t)
+                        caption_clips.append(active_clip)
                         
-                except Exception as exc:
-                    logger.warning("Failed to create caption for word '%s': %s", text, exc)
-                    
-                current_x += w["width"] + space_width
+                        # 2. Past Word (White)
+                        if end_t < chunk_end:
+                            past_clip = TextClip(
+                                text=text, font=self.font, font_size=70, 
+                                color="white", stroke_color="black", stroke_width=3
+                            )
+                            past_clip = past_clip.with_position((current_x, line_y)).with_start(end_t).with_end(chunk_end)
+                            caption_clips.append(past_clip)
+                            
+                    except Exception as exc:
+                        logger.warning("Failed to create caption for word '%s': %s", text, exc)
+                        
+                    current_x += w["width"] + space_width
 
         if caption_clips:
             logger.info("[AssemblyAgent] Compositing %d caption clips.", len(caption_clips))
