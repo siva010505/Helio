@@ -164,7 +164,7 @@ class AssemblyAgent:
             
         return VideoClip(lambda t: crop_func(zoomed_clip.get_frame, t), duration=duration)
 
-    def assemble_video(self, final_scenes: List[Dict], words_timing: List[Dict], voice_path: str, video_id: int) -> str:
+    def assemble_video(self, final_scenes: List[Dict], words_timing: List[Dict], voice_path: str, video_id: int, title: str = None, thumb_bg_path: str = None) -> str:
         from moviepy import VideoFileClip, ImageClip, AudioFileClip, TextClip, CompositeVideoClip, CompositeAudioClip
         from moviepy.video.fx.Loop import Loop
         import subprocess
@@ -439,7 +439,7 @@ class AssemblyAgent:
         
         logger.info("[AssemblyAgent] Generating cinematic custom thumbnail...")
         W, H = self.resolution
-        title_text = metadata.get("title", "UNTITLED")
+        title_text = title if title else "UNTITLED"
         
         # Split text into Setup (line 1) and Hook (line 2)
         words = title_text.split()
@@ -450,16 +450,62 @@ class AssemblyAgent:
             line1_text = ""
             line2_text = title_text.upper()
             
-        try:
-            # Grab a frame from the middle of the first 2 seconds to use as a background
-            bg_frame = main_video.get_frame(1.0)
-            img = Image.fromarray(bg_frame).convert('RGB')
-            # Darken the background slightly so text pops
-            enhancer = ImageEnhance.Brightness(img)
-            img = enhancer.enhance(0.7)
-        except Exception as e:
-            logger.warning("[AssemblyAgent] Failed to grab background frame, using dark grey: %s", e)
-            img = Image.new('RGB', (W, H), (20, 20, 20))
+        # Load the selected thumbnail background
+        img = None
+        if thumb_bg_path and os.path.exists(thumb_bg_path):
+            try:
+                img = Image.open(thumb_bg_path).convert('RGB')
+                # Resize and crop to fill W,H
+                from moviepy.video.fx.Crop import Crop
+                from moviepy.video.fx.Resize import Resize
+                # Calculate aspect ratio preserving resize
+                img_ratio = img.width / img.height
+                target_ratio = W / H
+                if img_ratio > target_ratio:
+                    new_h = H
+                    new_w = int(new_h * img_ratio)
+                    img = img.resize((new_w, new_h))
+                    left = (new_w - W) / 2
+                    img = img.crop((left, 0, left + W, H))
+                else:
+                    new_w = W
+                    new_h = int(new_w / img_ratio)
+                    img = img.resize((new_w, new_h))
+                    top = (new_h - H) / 2
+                    img = img.crop((0, top, W, top + H))
+                logger.info("[AssemblyAgent] Loaded LLM-selected thumbnail background: %s", thumb_bg_path)
+            except Exception as e:
+                logger.warning("[AssemblyAgent] Failed to load thumb_bg_path: %s", e)
+                img = None
+        
+        if img is None:
+            try:
+                # Fallback to first frame
+                bg_frame = main_video.get_frame(1.0)
+                img = Image.fromarray(bg_frame).convert('RGB')
+            except Exception as e:
+                logger.warning("[AssemblyAgent] Failed to grab background frame, using dark grey: %s", e)
+                img = Image.new('RGB', (W, H), (20, 20, 20))
+                
+        # 1. Darken slightly globally
+        enhancer = ImageEnhance.Brightness(img)
+        img = enhancer.enhance(0.9)
+        
+        # 2. Add Vignette (darken edges)
+        import math
+        pixels = img.load()
+        center_x, center_y = W / 2, H / 2
+        max_dist = math.sqrt(center_x**2 + center_y**2)
+        
+        for y in range(H):
+            for x in range(W):
+                dist = math.sqrt((x - center_x)**2 + (y - center_y)**2)
+                # Vignette factor: 1.0 at center, drops off towards edges
+                factor = 1.0 - (dist / max_dist) ** 1.5
+                factor = max(0.4, min(1.0, factor)) # Keep some brightness at edges
+                
+                r, g, b = pixels[x, y]
+                pixels[x, y] = (int(r * factor), int(g * factor), int(b * factor))
             
         draw = ImageDraw.Draw(img)
         

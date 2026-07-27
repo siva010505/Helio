@@ -112,29 +112,45 @@ def run_pipeline(
         db_session.commit()
         logger.info("[Pipeline] Phase 5.5 (Visual Director) complete. Final scenes aligned.")
 
-        # ── Phase 7: Assembly ──────────────────────────────────────
-        from src.agents.assembly_agent import AssemblyAgent
-        video_path = AssemblyAgent(channel_config).assemble_video(final_scenes, words_timing, voice_path, video.id)
-        video.file_path = video_path
-        video.status = "assembled"
-        db_session.commit()
-        logger.info("[Pipeline] Phase 7 (Assembly) complete. Final video saved at %s", video_path)
-
-        # ── Phase 8: SEO ───────────────────────────────────────────
+        # ── Phase 6: SEO (Moved before assembly to get title) ──────
         from src.agents.seo_agent import SEOAgent
         metadata = SEOAgent(llm_client, db_session).generate_metadata(script_text, topic_text, channel_config)
         video.title = metadata.get("title", "")
         video.description = metadata.get("description", "")
         video.tags_json = json.dumps(metadata.get("tags", []))
-        
-        # ── Phase 7: Thumbnail (Runs after SEO since it needs title) ──
-        from src.agents.thumbnail_agent import ThumbnailAgent
-        thumbnail_path = ThumbnailAgent(channel_config).generate_thumbnail(video_path, video.title, video.id)
-        video.thumbnail_path = thumbnail_path
-
         video.status = "metadata_ready"
         db_session.commit()
-        logger.info("[Pipeline] Phase 6 (SEO & Thumbnail) complete.")
+        logger.info("[Pipeline] Phase 6 (SEO) complete.")
+
+        # ── Phase 6.5: Thumbnail Scene Selection ───────────────────
+        prompt = f"We are making a YouTube short titled '{video.title}'. Here are the scenes:\n"
+        for i, s in enumerate(final_scenes):
+            prompt += f"{i}: {s.get('image_prompt', s.get('narrator_prompt', ''))}\n"
+        prompt += "\nReturn ONLY the single integer index of the scene that would make the best, most dramatic thumbnail background for this title."
+        try:
+            response = llm_client.generate_response(prompt).strip()
+            import re
+            match = re.search(r'\d+', response)
+            best_idx = int(match.group(0)) if match else 0
+            if best_idx >= len(final_scenes) or best_idx < 0:
+                best_idx = 0
+        except Exception as e:
+            logger.warning("[Pipeline] LLM thumbnail selection failed: %s", e)
+            best_idx = 0
+            
+        thumb_bg_path = final_scenes[best_idx].get("video_path")
+        logger.info("[Pipeline] LLM selected scene %s for thumbnail background.", best_idx)
+
+        # ── Phase 7: Assembly ──────────────────────────────────────
+        from src.agents.assembly_agent import AssemblyAgent
+        video_path = AssemblyAgent(channel_config).assemble_video(
+            final_scenes, words_timing, voice_path, video.id, 
+            title=video.title, thumb_bg_path=thumb_bg_path
+        )
+        video.file_path = video_path
+        video.status = "assembled"
+        db_session.commit()
+        logger.info("[Pipeline] Phase 7 (Assembly) complete. Final video saved at %s", video_path)
 
         # ── Phase 8: Upload ────────────────────────────────────────
         if not dry_run:
