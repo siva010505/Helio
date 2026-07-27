@@ -270,8 +270,8 @@ class AssemblyAgent:
         logger.info("[AssemblyAgent] Generating Karaoke accumulator captions...")
         caption_clips = []
         
-        # 1. Group words into chunks (sentences or max 10 words)
-        CHUNK_SIZE = 10
+        # 1. Group words into chunks (sentences or max 6 words)
+        CHUNK_SIZE = 6
         chunks = []
         current_chunk = []
         for word in words_timing:
