@@ -432,20 +432,53 @@ class AssemblyAgent:
 
         main_video = CompositeVideoClip(final_clips)
             
-        # --- Thumbnail Baking for YouTube Shorts ---
-        # YouTube API ignores custom thumbnails for Shorts and often shows a blank grey screen if we try.
-        # Workaround: Bake the thumbnail as the very first 0.05 seconds of the video.
-        thumbnail_path = f"data/cache/thumbnail_{video_id}.jpg"
+        # --- Custom PIL Thumbnail Baking ---
         from moviepy import ImageClip, concatenate_videoclips
+        import numpy as np
         
-        if os.path.exists(thumbnail_path):
-            logger.info("[AssemblyAgent] Baking thumbnail into first frame from %s", thumbnail_path)
-            thumb_clip = ImageClip(thumbnail_path).with_duration(0.05)
-            # Ensure thumbnail matches the video size
-            thumb_clip = thumb_clip.resize(newsize=main_video.size)
+        logger.info("[AssemblyAgent] Generating cinematic custom thumbnail...")
+        W, H = self.resolution
+        # Use upper() for cinematic documentary feel
+        title_text = metadata.get("title", "UNTITLED").upper()
+        
+        from PIL import Image, ImageDraw, ImageFont
+        img = Image.new('RGB', (W, H), (10, 10, 10))
+        draw = ImageDraw.Draw(img)
+        
+        try:
+            # Use same font as captions but much larger
+            font = ImageFont.truetype(self.font, 120)
+        except:
+            font = ImageFont.load_default()
             
-            # Prepend the thumbnail clip to the main composite video
-            main_video = concatenate_videoclips([thumb_clip, main_video], method="compose")
+        center_x = W / 2
+        center_y = H / 2
+        padding_x = 100
+        padding_y = 60
+        
+        if hasattr(draw, 'textbbox'):
+            bbox = draw.textbbox((center_x, center_y), title_text, font=font, anchor="mm")
+            box_x1 = bbox[0] - padding_x
+            box_y1 = bbox[1] - padding_y
+            box_x2 = bbox[2] + padding_x
+            box_y2 = bbox[3] + padding_y
+            
+            draw.rectangle([box_x1, box_y1, box_x2, box_y2], fill=(200, 0, 0))
+            draw.text((center_x, center_y), title_text, font=font, fill="white", anchor="mm")
+        else:
+            text_w = font.getsize(title_text)[0]
+            text_h = font.getsize(title_text)[1]
+            box_w = text_w + padding_x * 2
+            box_h = text_h + padding_y * 2
+            box_x1 = (W - box_w) / 2
+            box_y1 = (H - box_h) / 2
+            draw.rectangle([box_x1, box_y1, box_x1 + box_w, box_y1 + box_h], fill=(200, 0, 0))
+            draw.text((box_x1 + padding_x, box_y1 + padding_y), title_text, font=font, fill="white")
+            
+        thumb_array = np.array(img)
+        thumb_clip = ImageClip(thumb_array).with_duration(0.5)
+        
+        main_video = concatenate_videoclips([thumb_clip, main_video], method="compose")
         # -------------------------------------------
 
         output_path = self.cache_dir / f"final_video_{video_id}.mp4"
