@@ -491,21 +491,25 @@ class AssemblyAgent:
         enhancer = ImageEnhance.Brightness(img)
         img = enhancer.enhance(0.9)
         
-        # 2. Add Vignette (darken edges)
-        import math
-        pixels = img.load()
-        center_x, center_y = W / 2, H / 2
-        max_dist = math.sqrt(center_x**2 + center_y**2)
-        
-        for y in range(H):
-            for x in range(W):
-                dist = math.sqrt((x - center_x)**2 + (y - center_y)**2)
-                # Vignette factor: 1.0 at center, drops off towards edges
-                factor = 1.0 - (dist / max_dist) ** 1.5
-                factor = max(0.4, min(1.0, factor)) # Keep some brightness at edges
-                
-                r, g, b = pixels[x, y]
-                pixels[x, y] = (int(r * factor), int(g * factor), int(b * factor))
+        # 2. Add minimal Vignette (darken edges slightly)
+        try:
+            import math
+            pixels = img.load()
+            center_x, center_y = W / 2, H / 2
+            max_dist = math.sqrt(center_x**2 + center_y**2)
+            
+            for y in range(H):
+                for x in range(W):
+                    dist = math.sqrt((x - center_x)**2 + (y - center_y)**2)
+                    # Softer falloff
+                    factor = 1.0 - (dist / max_dist) ** 2.0
+                    # Minimal vignette: limit darkening to 0.7 (70% brightness at edges)
+                    factor = max(0.7, min(1.0, factor)) 
+                    
+                    r, g, b = pixels[x, y]
+                    pixels[x, y] = (int(r * factor), int(g * factor), int(b * factor))
+        except Exception as e:
+            logger.warning("[AssemblyAgent] Failed to apply vignette, skipping: %s", e)
             
         draw = ImageDraw.Draw(img)
         
