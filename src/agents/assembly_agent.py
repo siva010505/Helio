@@ -454,7 +454,16 @@ class AssemblyAgent:
         img = None
         if thumb_bg_path and os.path.exists(thumb_bg_path):
             try:
-                img = Image.open(thumb_bg_path).convert('RGB')
+                if thumb_bg_path.lower().endswith(('.mp4', '.mov', '.webm')):
+                    from moviepy.editor import VideoFileClip
+                    # Get a frame at 0.5s or halfway if it's shorter
+                    temp_clip = VideoFileClip(thumb_bg_path)
+                    t = min(0.5, temp_clip.duration / 2) if temp_clip.duration > 0 else 0
+                    frame_array = temp_clip.get_frame(t)
+                    temp_clip.close()
+                    img = Image.fromarray(frame_array).convert('RGB')
+                else:
+                    img = Image.open(thumb_bg_path).convert('RGB')
                 # Resize and crop to fill W,H
                 from moviepy.video.fx.Crop import Crop
                 from moviepy.video.fx.Resize import Resize
