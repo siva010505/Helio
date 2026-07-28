@@ -430,8 +430,9 @@ class AssemblyAgent:
             except Exception as e:
                 logger.warning("Failed to add watermark: %s", e)
 
+        raw_main_video = main_video
         main_video = CompositeVideoClip(final_clips)
-            
+        
         # --- Custom PIL Thumbnail Baking ---
         from moviepy import ImageClip, concatenate_videoclips
         import numpy as np
@@ -489,8 +490,8 @@ class AssemblyAgent:
         
         if img is None:
             try:
-                # Fallback to first frame
-                bg_frame = main_video.get_frame(1.0)
+                # Fallback to first frame of raw video
+                bg_frame = raw_main_video.get_frame(1.0)
                 img = Image.fromarray(bg_frame).convert('RGB')
             except Exception as e:
                 logger.warning("[AssemblyAgent] Failed to grab background frame, using dark grey: %s", e)
