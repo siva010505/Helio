@@ -71,6 +71,11 @@ class OrchestratorAgent:
         self.db.commit()
 
         summary = {"channels": [], "dry_run": dry_run}
+        
+        # Ensure all channels are in DB and config is hydrated with db_id
+        for ch_cfg in self.config.get("channels", []):
+            channel = self._ensure_channel_in_db(ch_cfg)
+            ch_cfg["db_id"] = channel.id
 
         # ── Phase 1: Analytics & Feedback Loop ────────────────────────────
         logger.info("[Orchestrator] Running Phase 1: Analytics & Evaluation pipeline...")
@@ -151,8 +156,7 @@ class OrchestratorAgent:
         }
 
         # ── Ensure channel exists in DB ───────────────────────────────
-        channel = self._ensure_channel_in_db(ch_cfg)
-        ch_cfg["db_id"] = channel.id
+        # This was moved to run before Phase 1 so analytics has db_id
 
         # ── Phase 2: Research ─────────────────────────────────────────
         research_agent = ResearchAgent(self.db, self.llm)
