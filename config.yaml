@@ -32,7 +32,7 @@ visual_sources:
   apis: ["pexels", "pixabay", "unsplash"]
   vision_scoring:
     enabled: true
-    max_candidates_scored_per_scene: 2
+    max_candidates_scored_per_scene: 3
     fallback_if_no_good_match: "kinetic_text_card"
 
 editing:
