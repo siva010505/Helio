@@ -456,7 +456,7 @@ class AssemblyAgent:
         if thumb_bg_path and os.path.exists(thumb_bg_path):
             try:
                 if thumb_bg_path.lower().endswith(('.mp4', '.mov', '.webm')):
-                    from moviepy.editor import VideoFileClip
+                    from moviepy import VideoFileClip
                     # Get a frame at 0.5s or halfway if it's shorter
                     temp_clip = VideoFileClip(thumb_bg_path)
                     t = min(0.5, temp_clip.duration / 2) if temp_clip.duration > 0 else 0
@@ -540,32 +540,43 @@ class AssemblyAgent:
                 except:
                     return (0, 0, 100, 100)
                     
-        bbox1 = get_bbox(line1_text, font1)
-        w1, h1 = bbox1[2] - bbox1[0], bbox1[3] - bbox1[1]
+        import textwrap
+        wrapped_line1 = textwrap.wrap(line1_text, width=18) if line1_text else []
         
+        h1_total = 0
+        line1_bboxes = []
+        for line in wrapped_line1:
+            bbox = get_bbox(line, font1)
+            w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            line1_bboxes.append((w, h))
+            h1_total += h + 10 # line spacing
+            
         bbox2 = get_bbox(line2_text, font2)
         w2, h2 = bbox2[2] - bbox2[0], bbox2[3] - bbox2[1]
         
-        spacing = 30
+        spacing = 40
         padding_x = 60
         padding_y = 30
         
         box_w = w2 + padding_x * 2
         box_h = h2 + padding_y * 2
         
-        total_h = h1 + spacing + box_h if line1_text else box_h
+        total_h = (h1_total + spacing if wrapped_line1 else 0) + box_h
         start_y = (H - total_h) / 2
         
-        if line1_text:
-            x1 = (W - w1) / 2
+        if wrapped_line1:
             y1 = start_y
             stroke_w = 6
-            for dx in [-stroke_w, 0, stroke_w]:
-                for dy in [-stroke_w, 0, stroke_w]:
-                    if dx == 0 and dy == 0: continue
-                    draw.text((x1+dx, y1+dy), line1_text, font=font1, fill="black")
-            draw.text((x1, y1), line1_text, font=font1, fill="white")
-            start_y += h1 + spacing
+            for i, line in enumerate(wrapped_line1):
+                w, h = line1_bboxes[i]
+                x1 = (W - w) / 2
+                for dx in [-stroke_w, 0, stroke_w]:
+                    for dy in [-stroke_w, 0, stroke_w]:
+                        if dx == 0 and dy == 0: continue
+                        draw.text((x1+dx, y1+dy), line, font=font1, fill="black")
+                draw.text((x1, y1), line, font=font1, fill="white")
+                y1 += h + 10
+            start_y = y1 - 10 + spacing
             
         x2 = (W - box_w) / 2
         y2 = start_y
