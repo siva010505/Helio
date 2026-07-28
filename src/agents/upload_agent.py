@@ -179,24 +179,27 @@ class UploadAgent:
         video_id = response.get('id')
         logger.info("[UploadAgent] Video uploaded successfully! Video ID: %s", video_id)
 
-        if long_form_url:
-            try:
-                comment_text = f"🎥 Watch the full story: {long_form_url}"
-                youtube.commentThreads().insert(
-                    part="snippet",
-                    body={
-                        "snippet": {
-                            "videoId": video_id,
-                            "topLevelComment": {
-                                "snippet": {
-                                    "textOriginal": comment_text
-                                }
+        # Post a pinned comment with subscription link
+        try:
+            comment_text = "Subscribe for more! 👇\nhttps://www.youtube.com/channel/UCE5mN1E9v7ZERDPDb1gRH9w?sub_confirmation=1"
+            if long_form_url:
+                comment_text += f"\n\n🎥 Watch the full story: {long_form_url}"
+                
+            youtube.commentThreads().insert(
+                part="snippet",
+                body={
+                    "snippet": {
+                        "videoId": video_id,
+                        "topLevelComment": {
+                            "snippet": {
+                                "textOriginal": comment_text
                             }
                         }
                     }
-                ).execute()
-                logger.info("[UploadAgent] Cross-promotion comment posted successfully.")
-            except Exception as e:
-                logger.error("[UploadAgent] Failed to post cross-promotion comment: %s", e)
+                }
+            ).execute()
+            logger.info("[UploadAgent] Auto-comment posted successfully.")
+        except Exception as e:
+            logger.error("[UploadAgent] Failed to post auto-comment: %s", e)
 
         return video_id
