@@ -26,18 +26,44 @@ from src.llm_client import LLMClient
 from src.agents.orchestrator import OrchestratorAgent
 
 
+class ColoredFormatter(logging.Formatter):
+    RED = "\033[91m"
+    YELLOW = "\033[93m"
+    GREEN = "\033[92m"
+    RESET = "\033[0m"
+
+    def format(self, record):
+        formatted = super().format(record)
+        msg = record.getMessage()
+        if record.levelno >= logging.ERROR:
+            return f"{self.RED}{formatted}{self.RESET}"
+        elif record.levelno == logging.WARNING:
+            return f"{self.YELLOW}{formatted}{self.RESET}"
+        elif "Video uploaded successfully!" in msg or "Phase 8 (Upload) complete." in msg:
+            return f"{self.GREEN}{formatted}{self.RESET}"
+        return formatted
+
 def setup_logging(level: str = "INFO") -> None:
-    logging.basicConfig(
-        level=getattr(logging, level.upper(), logging.INFO),
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-            logging.FileHandler(
-                os.path.join("logs", "helio.log"),
-                encoding="utf-8",
-            ),
-        ],
+    os.makedirs("logs", exist_ok=True)
+    
+    file_handler = logging.FileHandler(
+        os.path.join("logs", "helio.log"),
+        encoding="utf-8",
     )
+    file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+    
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(ColoredFormatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+    
+    root_logger = logging.getLogger()
+    root_logger.setLevel(getattr(logging, level.upper(), logging.INFO))
+    
+    # Remove existing handlers to avoid duplicates
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+        
+    root_logger.addHandler(console_handler)
+    root_logger.addHandler(file_handler)
 
 
 def main() -> None:
