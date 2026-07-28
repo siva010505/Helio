@@ -125,7 +125,7 @@ class UploadAgent:
                     data = json.load(f)
                     if "url" in data:
                         long_form_url = data["url"]
-                        description += f"\n\n🎥 Watch the full story: {long_form_url}"
+                        description += f"\n\n🎥 Watch our latest full video: {long_form_url}"
                         logger.info("[UploadAgent] Appended long-form CTA to description.")
             except Exception as e:
                 logger.info("[UploadAgent] Could not read long-form pointer file %s: %s", pointer_path, e)
@@ -183,7 +183,7 @@ class UploadAgent:
         try:
             comment_text = "Subscribe for more! 👇\nhttps://www.youtube.com/channel/UCE5mN1E9v7ZERDPDb1gRH9w?sub_confirmation=1"
             if long_form_url:
-                comment_text += f"\n\n🎥 Watch the full story: {long_form_url}"
+                comment_text += f"\n\n🎥 Watch our latest full video: {long_form_url}"
                 
             youtube.commentThreads().insert(
                 part="snippet",
