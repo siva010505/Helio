@@ -123,12 +123,13 @@ def run_pipeline(
         logger.info("[Pipeline] Phase 6 (SEO) complete.")
 
         # ── Phase 6.5: Thumbnail Scene Selection ───────────────────
-        prompt = f"We are making a YouTube short titled '{video.title}'. Here are the scenes:\n"
+        system_prompt = "You are a YouTube thumbnail optimization expert."
+        user_prompt = f"We are making a YouTube short titled '{video.title}'. Here are the scenes:\n"
         for i, s in enumerate(final_scenes):
-            prompt += f"{i}: {s.get('image_prompt', s.get('narrator_prompt', ''))}\n"
-        prompt += "\nReturn ONLY the single integer index of the scene that would make the best, most dramatic thumbnail background for this title."
+            user_prompt += f"{i}: {s.get('image_prompt', s.get('narrator_prompt', ''))}\n"
+        user_prompt += "\nReturn ONLY the single integer index of the scene that would make the best, most dramatic thumbnail background for this title."
         try:
-            response = llm_client.generate_response(prompt).strip()
+            response = llm_client.generate_text(system_prompt, user_prompt).strip()
             import re
             match = re.search(r'\d+', response)
             best_idx = int(match.group(0)) if match else 0
