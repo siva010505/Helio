@@ -84,12 +84,16 @@ class EvaluationAgent:
                 Video.youtube_video_id.isnot(None),
             )
             .order_by(PerformanceMetric.pulled_at.desc())
-            .limit(50)   # cap context size for LLM
             .all()
         )
 
         data = []
+        seen_videos = set()
         for metric, video in records:
+            if video.id in seen_videos:
+                continue
+            seen_videos.add(video.id)
+            
             data.append({
                 "video_id": video.id,
                 "topic_text": video.title or "unknown",
@@ -100,6 +104,9 @@ class EvaluationAgent:
                 "average_view_duration": metric.average_view_duration,
                 "average_view_percentage": metric.average_view_percentage,
             })
+            
+            if len(data) >= 50:
+                break
 
         logger.info("[EvaluationAgent] Loaded %d mature metric records for analysis.", len(data))
         return data
