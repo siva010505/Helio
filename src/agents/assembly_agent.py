@@ -441,7 +441,8 @@ class AssemblyAgent:
         logger.info("[AssemblyAgent] Generating cinematic custom thumbnail...")
         W, H = self.resolution
         title_text = title if title else "UNTITLED"
-        
+        # Filter out emojis and unsupported symbols so PIL doesn't draw missing glyph boxes
+        title_text = "".join(c for c in title_text if ord(c) < 0x2000)
         # Split text into Setup (line 1) and Hook (line 2)
         words = title_text.split()
         if len(words) > 1:
