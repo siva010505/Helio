@@ -19,7 +19,7 @@ Constraints:
 1. Title: Under 60 characters, highly engaging, creating curiosity or urgency. (e.g., "The AI Tool Nobody is Talking About! 🤯")
 2. Description: A brief 2-3 sentence summary of the video, followed by 3-5 relevant hashtags.
 3. Tags: A list of 5-8 highly relevant comma-separated tags for the YouTube algorithm.
-4. Thumbnail Text: A highly engaging, punchy hook printed ON the thumbnail image. MUST be 4 words or less. Enclose the MOST important/shocking word(s) in brackets [ ] so they get highlighted in a red box. (e.g., "AI'S [DARK SECRET]" or "THE BIZARRE [TRUTH]")
+4. Thumbnail Text: A highly engaging, punchy hook printed ON the thumbnail image. MUST be 4 words or less. The MOST important or shocking word MUST be the very last word in the phrase, as this last word will be highlighted in a red box. (e.g., "THE BIZARRE TRUTH")
 
 Output your response strictly as a JSON object:
 {
