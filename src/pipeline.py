@@ -124,10 +124,10 @@ def run_pipeline(
 
         # ── Phase 6.5: Thumbnail Scene Selection ───────────────────
         system_prompt = "You are a YouTube thumbnail optimization expert."
-        user_prompt = f"We are making a YouTube short titled '{video.title}'. Here are the scenes:\n"
+        user_prompt = f"We are making a YouTube short titled '{video.title}'. Here are the scenes along with their Vision Score (out of 10) representing how perfectly the downloaded stock footage actually matches the description:\n"
         for i, s in enumerate(final_scenes):
-            user_prompt += f"{i}: {s.get('image_prompt', s.get('narrator_prompt', ''))}\n"
-        user_prompt += "\nReturn ONLY the single integer index of the scene that would make the best, most dramatic thumbnail background for this title."
+            user_prompt += f"{i}: {s.get('image_prompt', s.get('narrator_prompt', ''))} (Vision Score: {s.get('vision_score', 0.0)})\n"
+        user_prompt += "\nReturn ONLY the single integer index of the scene that would make the best, most dramatic thumbnail background. CRITICAL: You MUST choose a scene with a HIGH Vision Score (preferably > 7.0), otherwise the thumbnail will be completely unrelated to the topic."
         try:
             response = llm_client.generate_text(system_prompt, user_prompt).strip()
             import re

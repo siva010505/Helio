@@ -306,7 +306,8 @@ class VisualDirectorAgent:
                 
             final_scenes.append({
                 **scene,
-                "video_path": best_file_path
+                "video_path": best_file_path,
+                "vision_score": best_score
             })
             
         return final_scenes
