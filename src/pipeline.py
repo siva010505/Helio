@@ -144,9 +144,10 @@ def run_pipeline(
 
         # ── Phase 7: Assembly ──────────────────────────────────────
         from src.agents.assembly_agent import AssemblyAgent
+        thumbnail_text = metadata.get("thumbnail_text", video.title)
         video_path = AssemblyAgent(channel_config).assemble_video(
             final_scenes, words_timing, voice_path, video.id, 
-            title=video.title, thumb_bg_path=thumb_bg_path
+            title=thumbnail_text, thumb_bg_path=thumb_bg_path
         )
         video.file_path = video_path
         video.status = "assembled"

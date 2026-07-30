@@ -19,12 +19,14 @@ Constraints:
 1. Title: Under 60 characters, highly engaging, creating curiosity or urgency. (e.g., "The AI Tool Nobody is Talking About! 🤯")
 2. Description: A brief 2-3 sentence summary of the video, followed by 3-5 relevant hashtags.
 3. Tags: A list of 5-8 highly relevant comma-separated tags for the YouTube algorithm.
+4. Thumbnail Text: A highly engaging, punchy hook printed ON the thumbnail image. MUST be 4 words or less. (e.g., "AI'S DARK SECRET" or "THE BIZARRE TRUTH")
 
 Output your response strictly as a JSON object:
 {
     "title": "Engaging Title Here",
     "description": "Engaging description with #hashtags",
-    "tags": ["tag1", "tag2", "tag3"]
+    "tags": ["tag1", "tag2", "tag3"],
+    "thumbnail_text": "AI'S DARK SECRET"
 }
 """
 
