@@ -444,13 +444,19 @@ class AssemblyAgent:
         # Filter out emojis and unsupported symbols so PIL doesn't draw missing glyph boxes
         title_text = "".join(c for c in title_text if ord(c) < 0x2000)
         # Split text into Setup (line 1) and Hook (line 2)
-        words = title_text.split()
-        if len(words) > 1:
-            line1_text = " ".join(words[:-1]).lower()
-            line2_text = words[-1].upper()
+        import re
+        match = re.search(r'\[(.*?)\]', title_text)
+        if match:
+            line2_text = match.group(1).strip().upper()
+            line1_text = title_text.replace(match.group(0), "").strip().lower()
         else:
-            line1_text = ""
-            line2_text = title_text.upper()
+            words = title_text.split()
+            if len(words) > 1:
+                line1_text = " ".join(words[:-1]).lower()
+                line2_text = words[-1].upper()
+            else:
+                line1_text = ""
+                line2_text = title_text.upper()
             
         # Load the selected thumbnail background
         img = None
