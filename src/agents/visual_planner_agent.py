@@ -28,6 +28,8 @@ For each scene, provide:
 - "search_query": A short 2-4 word query to search stock video sites (e.g. Pexels/Pixabay) that perfectly matches the text. (e.g., "hacker typing", "robot factory", "abstract data"). Do NOT use abstract words like "concept" or "AI", use literal visual descriptions.
 - "description": A brief description of what the visual should convey, to be used to score the footage relevance later.
 
+CRITICAL: Do NOT use double quotes (") inside any of your text values (like descriptions or text_segments). If you need to quote a word, use single quotes (') instead.
+
 The output MUST be a JSON list of objects:
 [
   {
