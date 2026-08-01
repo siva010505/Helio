@@ -115,7 +115,9 @@ class ScriptAgent:
             user_prompt += f"Background context:\n{topic.get('description', '')}\n"
             user_prompt += (
                 f"\nCRITICAL REQUIREMENT: This is a promotional short for our full-length video. "
-                f"You MUST include a clear Call To Action (CTA) telling the viewer to click the related video link below or check our channel to get the full story.\n"
+                f"You MUST include a Call To Action (CTA) directing the viewer to the related video link below. "
+                f"Do NOT use generic robotic phrases. Organically blend the CTA into the context of the story using words related to the video "
+                f"(e.g., 'check the detailed video of this experiment below', 'watch the full breakdown of this incident via the link below').\n"
             )
         elif topic.get("description"):
             user_prompt += f"Background context:\n{topic['description']}\n"
