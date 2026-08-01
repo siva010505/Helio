@@ -40,9 +40,9 @@ Raw view counts are heavily influenced by the YouTube algorithm, luck, and uploa
 You MUST prioritize Average View Percentage (Retention) and Average View Duration as the true indicators of script quality. A video with low views but 90%+ retention is a massive success. Look for consistent patterns across the cohort rather than isolated hits.
 
 Your job:
-1. Identify the top 2-3 patterns that explain HIGH performance (High Retention, High AVD, High Views).
+1. Identify the top 2-3 patterns that explain HIGH performance. (CRITICAL: High Retention and High AVD are the ONLY true metrics of success. Ignore raw view count entirely when finding these patterns, as views are largely luck-based).
 2. Identify the top 2-3 patterns that explain LOW performance.
-3. For each of the following agents, output a HIGHLY PRECISE, CONCRETE, and ACTIONABLE instruction update (a SHORT paragraph) that will strictly optimize for increasing Views and Retention. Do NOT give vague advice like "make it engaging" or "be interesting". Give exact structural rules (e.g. "Start every hook with a startling negative statistic", "Score topics about deep-sea creatures higher than space").
+3. For each of the following agents, output a HIGHLY PRECISE, CONCRETE, and ACTIONABLE instruction update (a SHORT paragraph) that will strictly optimize for increasing Average View Duration and Retention Percentage. Do NOT give vague advice like "make it engaging" or "be interesting". Give exact structural rules (e.g. "Start every hook with a startling negative statistic", "Score topics about deep-sea creatures higher than space").
    - script_agent: exactly how should the script/hook structure change?
    - seo_agent: exactly what title/description formulas drive higher CTR?
    - scoring_agent: exactly which topic nuances should be scored higher/lower?
