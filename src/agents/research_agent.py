@@ -25,8 +25,6 @@ from src.db.models import Topic, Channel
 
 logger = logging.getLogger(__name__)
 
-# How many days back to look when de-duplicating topics
-DEDUP_LOOKBACK_DAYS = 30
 # Maximum candidates we want to collect before scoring
 MAX_CANDIDATES = 15
 # Minimum distinct candidates required before handing off to scoring
@@ -111,16 +109,16 @@ class ResearchAgent:
         niche = channel_config.get("niche", "")
         logger.info("[ResearchAgent] Brainstorming niche: %s", niche)
 
-        # ── 1. Load recently-used topics for dedup ────────────────────
-        lookback = datetime.utcnow() - timedelta(days=DEDUP_LOOKBACK_DAYS)
+        # ── 1. Load historical topics for dedup ───────────────────────────
         existing_topics: list[str] = [
             row.topic_text
             for row in self.db.query(Topic)
             .filter(
                 Topic.channel_id == channel_id,
-                Topic.created_at >= lookback,
                 Topic.status.in_(["selected", "used"]),
             )
+            .order_by(Topic.created_at.desc())
+            .limit(2500)
             .all()
         ]
         logger.info(
