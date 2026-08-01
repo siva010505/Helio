@@ -2,12 +2,12 @@ name: Helio Daily Pipeline
 
 on:
   schedule:
-    # 12:00 UTC = 5:30 PM IST
-    - cron: '0 12 * * *'
-    # 15:00 UTC = 8:30 PM IST
-    - cron: '0 15 * * *'
-    # 19:00 UTC = 12:30 AM IST
-    - cron: '0 19 * * *'
+    # 21:00 UTC = 2:30 AM IST
+    - cron: '0 21 * * *'
+    # 16:00 UTC = 9:30 PM IST
+    - cron: '0 16 * * *'
+    # 10:00 UTC = 3:30 PM IST
+    - cron: '0 10 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
