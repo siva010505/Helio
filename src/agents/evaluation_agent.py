@@ -78,11 +78,9 @@ class EvaluationAgent:
         records = (
             self.db.query(PerformanceMetric, Video)
             .join(Video, PerformanceMetric.video_id == Video.id)
-            .join(Topic, Video.topic_id == Topic.id)
             .filter(
                 PerformanceMetric.views > 0,
                 Video.youtube_video_id.isnot(None),
-                Topic.source != "long_form_promo"
             )
             .order_by(PerformanceMetric.pulled_at.desc())
             .all()
