@@ -126,6 +126,36 @@ class ResearchAgent:
             len(existing_topics),
         )
 
+        # ── 1.5. Check latest long-form video for promotion ───────────
+        promo_candidate = None
+        try:
+            import json
+            if os.path.exists("latest_long_form.json"):
+                with open("latest_long_form.json", "r") as f:
+                    lf_data = json.load(f)
+                    lf_title = lf_data.get("title")
+                    lf_link = lf_data.get("link")
+                    if lf_title and lf_link:
+                        logger.info("[ResearchAgent] Found latest_long_form.json. Checking semantic duplication for promo: '%s'", lf_title)
+                        if not existing_topics:
+                            promo_candidate = {"title": lf_title, "description": f"Promo link: {lf_link}", "source": "long_form_promo"}
+                        else:
+                            historical_str = "\n".join(f"- {t}" for t in existing_topics)
+                            sys_prompt = (
+                                "You are a semantic deduplicator. Compare the given 'New Title' against the list of 'Historical Topics'. "
+                                "If the New Title shares the same core meaning or underlying subject matter as ANY historical topic, return {\"is_duplicate\": true}. "
+                                "Otherwise return {\"is_duplicate\": false}. Respond ONLY with valid JSON."
+                            )
+                            user_prompt = f"Historical:\n{historical_str}\n\nNew Title: {lf_title}"
+                            resp = self.llm.generate_json(system_prompt=sys_prompt, user_prompt=user_prompt, temperature=0.1, max_tokens=100)
+                            if not resp.get("is_duplicate", True):
+                                promo_candidate = {"title": lf_title, "description": f"Promo link: {lf_link}", "source": "long_form_promo"}
+                                logger.info("[ResearchAgent] Long-form promo is unique! Injecting as high-priority candidate.")
+                            else:
+                                logger.info("[ResearchAgent] Long-form promo is a duplicate. Skipping.")
+        except Exception as exc:
+            logger.error("[ResearchAgent] Failed to process long-form promo: %s", exc)
+
         # ── 2. Brainstorm via LLM ─────────────────────────────────────
         try:
             system_prompt = BRAINSTORM_PROMPT.format(niche=niche)
@@ -183,6 +213,11 @@ class ResearchAgent:
                 final_unique.append(u)
                 
         unique = final_unique[:MAX_CANDIDATES]
+
+        # Inject promo candidate at the very top if it exists
+        if promo_candidate:
+            unique.insert(0, promo_candidate)
+            unique = unique[:MAX_CANDIDATES]
 
         logger.info("[ResearchAgent] Unique candidates after dedup: %d", len(unique))
 

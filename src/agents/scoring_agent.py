@@ -112,14 +112,21 @@ def _parse_scores(raw: Any, candidates: list[dict]) -> list[dict]:
         }
         # Clamp all dimensions to [0, 10]
         dims = {k: max(0, min(10, v)) for k, v in dims.items()}
-        composite = round(_compute_composite(dims), 3)
+        
+        if c.get("source") == "long_form_promo":
+            composite = 100.0
+            dims = {k: 10 for k in dims.keys()}
+            reasoning = "Automatic override for long-form cross promotion."
+        else:
+            composite = round(_compute_composite(dims), 3)
+            reasoning = item.get("reasoning", "")
 
         scored.append(
             {
                 **c,
                 "dimensions": dims,
                 "composite_score": composite,
-                "reasoning": item.get("reasoning", ""),
+                "reasoning": reasoning,
             }
         )
 
