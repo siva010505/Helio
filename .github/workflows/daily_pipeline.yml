@@ -2,12 +2,9 @@ name: Helio Daily Pipeline
 
 on:
   schedule:
-    # 21:00 UTC = 2:30 AM IST
-    - cron: '0 21 * * *'
-    # 16:00 UTC = 9:30 PM IST
-    - cron: '0 16 * * *'
-    # 10:00 UTC = 3:30 PM IST
-    - cron: '0 10 * * *'
+    # Run once daily at 19:30 UTC (1:00 AM IST)
+    # The pipeline will generate 3 videos and schedule them for 2:30 AM, 3:30 PM, and 9:30 PM IST.
+    - cron: '30 19 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
