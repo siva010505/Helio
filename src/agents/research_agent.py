@@ -49,51 +49,31 @@ Output ONLY a valid JSON object matching this schema:
 }}
 """
 
-def _deduplicate(
-    candidates: list[dict],
-    existing_topics: list[str],
-    seen_titles: set,
-) -> list[dict]:
-    """
-    Remove:
-    - Candidates whose title is exactly the same as a previously seen one.
-    - Candidates whose title is too similar to a recently-used DB topic.
-    - Candidates whose title is too similar to an already-accepted candidate
-      in the current batch (cross-batch fuzzy dedup).
-    """
-    from difflib import SequenceMatcher
+SEMANTIC_DEDUP_PROMPT = """\
+You are an intelligent semantic filter for a YouTube Shorts channel.
+Your job is to read a list of NEW candidate topics and compare them against a list of HISTORICAL topics we have already covered.
 
-    def is_too_similar(a: str, b: str, threshold: float = 0.7) -> bool:
-        a_lower = a.lower()
-        b_lower = b.lower()
-        if a_lower in b_lower or b_lower in a_lower:
-            return True
-        return SequenceMatcher(None, a_lower, b_lower).ratio() >= threshold
+You must deeply analyze the underlying meaning, core mystery, and subject matter of each candidate.
+Filter out ANY candidate that shares the same core meaning or underlying subject matter as ANY historical topic, even if the title uses completely different words.
+Also ensure there are no semantic duplicates within the new candidates themselves.
 
-    accepted_titles: list[str] = []  # fuzzy-checked pool of accepted candidates this run
-    unique = []
+Historical Topics:
+{historical_topics}
 
-    for c in candidates:
-        title = c["title"].strip()
-        if not title:
-            continue
-        # Exact duplicate guard
-        if title in seen_titles:
-            logger.debug("Filtered (exact dup): %s", title)
-            continue
-        # Fuzzy check against recent DB topics
-        if any(is_too_similar(title, existing) for existing in existing_topics):
-            logger.debug("Filtered (too similar to DB history): %s", title)
-            continue
-        # Fuzzy check against already-accepted candidates in this batch
-        if any(is_too_similar(title, accepted) for accepted in accepted_titles):
-            logger.debug("Filtered (too similar to accepted candidate): %s", title)
-            continue
-        seen_titles.add(title)
-        accepted_titles.append(title)
-        unique.append(c)
+New Candidates:
+{candidates_json}
 
-    return unique
+Return ONLY a valid JSON object matching this schema containing ONLY the candidates that are completely unique and do not overlap with historical topics:
+{{
+    "unique_candidates": [
+        {{
+            "title": "A highly engaging title under 50 characters",
+            "description": "A 1-2 sentence description of the narrative arc."
+        }}
+    ]
+}}
+"""
+
 
 
 class ResearchAgent:
@@ -168,10 +148,43 @@ class ResearchAgent:
 
         logger.info("[ResearchAgent] Total raw results collected: %d", len(all_raw))
 
-        # ── 3. Deduplicate ────────────────────────────────────────────
-        seen_titles: set[str] = set()
-        unique = _deduplicate(all_raw, existing_topics, seen_titles)
-        unique = unique[:MAX_CANDIDATES]
+        # ── 3. Semantic Deduplication via LLM ─────────────────────────
+        logger.info("[ResearchAgent] Running Semantic AI Matching against %d historical topics...", len(existing_topics))
+        try:
+            if not existing_topics and not all_raw:
+                unique = all_raw
+            else:
+                import json
+                historical_str = "\n".join(f"- {t}" for t in existing_topics) if existing_topics else "None"
+                candidates_str = json.dumps(all_raw, indent=2)
+                sys_prompt = SEMANTIC_DEDUP_PROMPT.format(
+                    historical_topics=historical_str,
+                    candidates_json=candidates_str
+                )
+                
+                response = self.llm.generate_json(
+                    system_prompt=sys_prompt,
+                    user_prompt="Filter out semantic duplicates and return the unique candidates.",
+                    temperature=0.1,  # Low temp for analytical matching
+                    max_tokens=2000
+                )
+                unique = response.get("unique_candidates", [])
+                for u in unique:
+                    u["source"] = "llm_brainstorm"
+        except Exception as exc:
+            logger.error("[ResearchAgent] Semantic deduplication failed: %s", exc)
+            unique = all_raw
+
+        # Final exact match safety net
+        seen_titles = set()
+        final_unique = []
+        for u in unique:
+            t = u.get("title", "").strip()
+            if t and t not in seen_titles:
+                seen_titles.add(t)
+                final_unique.append(u)
+                
+        unique = final_unique[:MAX_CANDIDATES]
 
         logger.info("[ResearchAgent] Unique candidates after dedup: %d", len(unique))
 
