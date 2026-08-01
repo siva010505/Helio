@@ -112,11 +112,10 @@ class ScriptAgent:
         
         user_prompt = f"Write a script for the topic: {topic.get('topic_text')}\n"
         if topic.get("source") == "long_form_promo":
-            link = topic.get("description", "").replace("Promo link: ", "").strip()
+            user_prompt += f"Background context:\n{topic.get('description', '')}\n"
             user_prompt += (
                 f"\nCRITICAL REQUIREMENT: This is a promotional short for our full-length video. "
-                f"You MUST include a clear Call To Action (CTA) telling the viewer to watch the full video on our channel, "
-                f"and specifically mention this link/topic: {link}\n"
+                f"You MUST include a clear Call To Action (CTA) telling the viewer to click the related video link below or check our channel to get the full story.\n"
             )
         elif topic.get("description"):
             user_prompt += f"Background context:\n{topic['description']}\n"

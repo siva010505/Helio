@@ -19,7 +19,7 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, List
 
-from src.db.models import Video, PerformanceMetric, PromptVersion
+from src.db.models import Video, PerformanceMetric, PromptVersion, Topic
 
 logger = logging.getLogger(__name__)
 
@@ -78,9 +78,11 @@ class EvaluationAgent:
         records = (
             self.db.query(PerformanceMetric, Video)
             .join(Video, PerformanceMetric.video_id == Video.id)
+            .join(Topic, Video.topic_id == Topic.id)
             .filter(
                 PerformanceMetric.views > 0,
                 Video.youtube_video_id.isnot(None),
+                Topic.source != "long_form_promo"
             )
             .order_by(PerformanceMetric.pulled_at.desc())
             .all()

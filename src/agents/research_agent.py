@@ -134,11 +134,17 @@ class ResearchAgent:
                 with open("latest_long_form.json", "r") as f:
                     lf_data = json.load(f)
                     lf_title = lf_data.get("title")
-                    lf_link = lf_data.get("link")
-                    if lf_title and lf_link:
+                    lf_link = lf_data.get("link", "")
+                    lf_summary = lf_data.get("actual_content_summary", "")
+                    
+                    desc = f"Promo link: {lf_link}"
+                    if lf_summary:
+                        desc += f" | Actual Content Summary: {lf_summary}"
+                        
+                    if lf_title:
                         logger.info("[ResearchAgent] Found latest_long_form.json. Checking semantic duplication for promo: '%s'", lf_title)
                         if not existing_topics:
-                            promo_candidate = {"title": lf_title, "description": f"Promo link: {lf_link}", "source": "long_form_promo"}
+                            promo_candidate = {"title": lf_title, "description": desc, "source": "long_form_promo"}
                         else:
                             historical_str = "\n".join(f"- {t}" for t in existing_topics)
                             sys_prompt = (
@@ -149,7 +155,7 @@ class ResearchAgent:
                             user_prompt = f"Historical:\n{historical_str}\n\nNew Title: {lf_title}"
                             resp = self.llm.generate_json(system_prompt=sys_prompt, user_prompt=user_prompt, temperature=0.1, max_tokens=100)
                             if not resp.get("is_duplicate", True):
-                                promo_candidate = {"title": lf_title, "description": f"Promo link: {lf_link}", "source": "long_form_promo"}
+                                promo_candidate = {"title": lf_title, "description": desc, "source": "long_form_promo"}
                                 logger.info("[ResearchAgent] Long-form promo is unique! Injecting as high-priority candidate.")
                             else:
                                 logger.info("[ResearchAgent] Long-form promo is a duplicate. Skipping.")
