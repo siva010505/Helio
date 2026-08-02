@@ -80,6 +80,7 @@ class UploadAgent:
         tags: list,
         thumbnail_path: str = None,
         publish_time_str: str = None,
+        topic_source: str = None,
     ) -> str:
         """
         Uploads the video to YouTube.
@@ -118,7 +119,7 @@ class UploadAgent:
         pointer_path = youtube_config.get("shared_long_form_pointer_path")
         
         long_form_url = None
-        if pointer_path and os.path.exists(pointer_path):
+        if topic_source == "long_form_promo" and pointer_path and os.path.exists(pointer_path):
             try:
                 import json
                 with open(pointer_path, 'r') as f:
@@ -129,6 +130,9 @@ class UploadAgent:
                         logger.info("[UploadAgent] Appended long-form CTA to description.")
             except Exception as e:
                 logger.info("[UploadAgent] Could not read long-form pointer file %s: %s", pointer_path, e)
+                
+        description += f"\n\n🎥 View our channel for more videos: https://www.youtube.com/channel/UCE5mN1E9v7ZERDPDb1gRH9w?sub_confirmation=1"
+        logger.info("[UploadAgent] Appended standard channel CTA to description.")
 
         body = {
             'snippet': {

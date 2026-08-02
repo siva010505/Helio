@@ -164,7 +164,8 @@ def run_pipeline(
                     description=video.description,
                     tags=json.loads(video.tags_json) if video.tags_json else [],
                     thumbnail_path=video.thumbnail_path,
-                    publish_time_str=publish_time_str
+                    publish_time_str=publish_time_str,
+                    topic_source=topic.get("source")
                 )
                 video.youtube_video_id = youtube_video_id
                 video.status = "uploaded"
