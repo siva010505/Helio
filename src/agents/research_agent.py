@@ -130,8 +130,8 @@ class ResearchAgent:
         promo_candidate = None
         try:
             import json
-            if os.path.exists("latest_long_form.json"):
-                with open("latest_long_form.json", "r") as f:
+            if os.path.exists("shared/latest_long_form.json"):
+                with open("shared/latest_long_form.json", "r") as f:
                     lf_data = json.load(f)
                     lf_title = lf_data.get("title")
                     lf_link = lf_data.get("link", "")
