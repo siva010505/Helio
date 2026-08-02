@@ -123,8 +123,8 @@ class UploadAgent:
                 import json
                 with open(pointer_path, 'r') as f:
                     data = json.load(f)
-                    if "url" in data:
-                        long_form_url = data["url"]
+                    long_form_url = data.get("url") or data.get("link")
+                    if long_form_url:
                         description += f"\n\n🎥 Watch our latest full video: {long_form_url}"
                         logger.info("[UploadAgent] Appended long-form CTA to description.")
             except Exception as e:
