@@ -137,9 +137,9 @@ class ResearchAgent:
                     lf_link = lf_data.get("link", "")
                     lf_summary = lf_data.get("actual_content_summary", "")
                     
-                    desc = f"Promo link: {lf_link}"
+                    desc = ""
                     if lf_summary:
-                        desc += f" | Actual Content Summary: {lf_summary}"
+                        desc = f"Actual Content Summary: {lf_summary}"
                         
                     if lf_title:
                         logger.info("[ResearchAgent] Found latest_long_form.json. Checking semantic duplication for promo: '%s'", lf_title)
