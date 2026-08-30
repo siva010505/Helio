@@ -32,7 +32,7 @@ class LLMClient:
 
     def __init__(
         self,
-        model: str = "meta/llama-3.1-70b-instruct",
+        model: str = "nvidia/llama-3.1-nemotron-70b-instruct",
         vision_model: str = "meta/llama-3.2-11b-vision-instruct",
         temperature: float = 0.8,
     ):
