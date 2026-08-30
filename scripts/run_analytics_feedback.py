@@ -73,8 +73,8 @@ def main() -> None:
 
     llm_cfg = config.get("llm", {})
     llm = LLMClient(
-        model=llm_cfg.get("model", "nvidia/llama-3.1-nemotron-70b-instruct"),
-        vision_model=llm_cfg.get("vision_model", "meta/llama-3.2-90b-vision-instruct"),
+        model=llm_cfg.get("model", "deepseek-ai/deepseek-v4-pro-0813"),
+        vision_model=llm_cfg.get("vision_model", "meta/llama-3.2-11b-vision-instruct"),
         temperature=llm_cfg.get("temperature", 0.8),
     )
 
