@@ -113,7 +113,7 @@ def main() -> None:
     # ── Build shared LLM client ───────────────────────────────────────
     llm_cfg = config.get("llm", {})
     llm = LLMClient(
-        model=llm_cfg.get("model", "deepseek-ai/deepseek-v4-pro-0813"),
+        model=llm_cfg.get("model", "deepseek-ai/deepseek-v4.1-flash"),
         vision_model=llm_cfg.get("vision_model", "meta/llama-3.2-11b-vision-instruct"),
         temperature=llm_cfg.get("temperature", 0.8),
     )

@@ -17,7 +17,7 @@ channels:
 
 llm:
   provider: "nim"
-  model: "deepseek-ai/deepseek-v4-pro-0813"
+  model: "deepseek-ai/deepseek-v4.1-flash"
   vision_model: "meta/llama-3.2-11b-vision-instruct"
   temperature: 0.8
 

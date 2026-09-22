@@ -32,7 +32,7 @@ class LLMClient:
 
     def __init__(
         self,
-        model: str = "deepseek-ai/deepseek-v4-pro-0813",
+        model: str = "deepseek-ai/deepseek-v4.1-flash",
         vision_model: str = "meta/llama-3.2-11b-vision-instruct",
         temperature: float = 0.8,
     ):
